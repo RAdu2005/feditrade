@@ -33,7 +33,7 @@ async function registerApp(instanceDomain: string, redirectUri: string) {
       accept: "application/json",
     },
     body: JSON.stringify({
-      client_name: "Fedimarket",
+      client_name: "Feditrade",
       redirect_uris: redirectUri,
       scopes: OAUTH_SCOPES,
       website: "https://fedimarket.example",

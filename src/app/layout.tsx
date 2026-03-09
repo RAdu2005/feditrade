@@ -14,7 +14,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Fedimarket",
+  title: "Feditrade",
   description: "Federated marketplace built on ActivityPub",
 };
 

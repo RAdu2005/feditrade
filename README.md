@@ -1,4 +1,4 @@
-# Fedimarket MVP
+# Feditrade MVP
 
 Next.js marketplace MVP with:
 - Mastodon OAuth login (dynamic instance registration)

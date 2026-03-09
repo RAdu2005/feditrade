@@ -9,7 +9,7 @@ export async function SiteNav() {
     <header className="border-b border-slate-200">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
         <Link href="/" className="text-lg font-semibold">
-          Fedimarket
+          Feditrade
         </Link>
         <nav className="hidden items-center gap-3 text-sm sm:flex">
           <Link href="/">Listings</Link>
