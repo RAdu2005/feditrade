@@ -46,7 +46,7 @@ export function ListingFeed({ initial }: { initial: FeedPayload }) {
   }
 
   if (items.length === 0) {
-    return <p className="text-sm text-slate-600">No listings yet.</p>;
+    return <p className="text-sm text-slate-600">No listings yet. Be the first one!</p>;
   }
 
   return (

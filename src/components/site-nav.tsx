@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { MobileNavMenu } from "@/components/mobile-nav-menu";
 import { SignOutButton } from "@/components/sign-out-button";
 import { requireUser } from "@/lib/auth-helpers";
 
@@ -10,7 +11,7 @@ export async function SiteNav() {
         <Link href="/" className="text-lg font-semibold">
           Fedimarket
         </Link>
-        <nav className="flex items-center gap-3 text-sm">
+        <nav className="hidden items-center gap-3 text-sm sm:flex">
           <Link href="/">Listings</Link>
           {user ? <Link href="/listings/new">Create listing</Link> : null}
           {user?.role === "ADMIN" ? <Link href="/admin">Admin</Link> : null}
@@ -31,7 +32,7 @@ export async function SiteNav() {
                 ) : (
                   <span className="h-6 w-6 rounded-full border border-slate-200 bg-slate-100" />
                 )}
-                <span>@{user.mastodonUsername}</span>
+                <span className="max-w-40 truncate">@{user.mastodonUsername}</span>
               </Link>
               <SignOutButton />
             </>
@@ -41,6 +42,7 @@ export async function SiteNav() {
             </Link>
           )}
         </nav>
+        <MobileNavMenu user={user} />
       </div>
     </header>
   );

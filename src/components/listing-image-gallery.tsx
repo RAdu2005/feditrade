@@ -95,7 +95,7 @@ export function ListingImageGallery({ images, altBase }: Props) {
           <button
             type="button"
             onClick={() => setActiveIndex(null)}
-            className="absolute right-4 top-4 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 text-lg text-white"
+            className="absolute right-4 top-4 z-20 inline-flex h-9 w-9 items-center justify-center rounded-full border border-white/40 text-lg text-white"
             aria-label="Close gallery"
           >
             x
@@ -108,7 +108,7 @@ export function ListingImageGallery({ images, altBase }: Props) {
                 event.stopPropagation();
                 showPrevious();
               }}
-              className="absolute left-4 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 text-xl text-white"
+              className="absolute left-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 text-xl text-white"
               aria-label="Previous image"
             >
               {"<"}
@@ -116,14 +116,14 @@ export function ListingImageGallery({ images, altBase }: Props) {
           ) : null}
 
           <div
-            className="relative flex h-full w-full max-w-6xl items-center justify-center"
+            className="relative flex max-h-[92vh] max-w-[92vw] items-center justify-center"
             onClick={(event) => event.stopPropagation()}
           >
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
               src={activeImage.url}
               alt={altBase}
-              className="max-h-[92vh] w-auto max-w-full object-contain"
+              className="block max-h-[92vh] max-w-[92vw] object-contain"
             />
           </div>
 
@@ -134,7 +134,7 @@ export function ListingImageGallery({ images, altBase }: Props) {
                 event.stopPropagation();
                 showNext();
               }}
-              className="absolute right-4 top-1/2 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 text-xl text-white"
+              className="absolute right-4 top-1/2 z-20 inline-flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-white/40 text-xl text-white"
               aria-label="Next image"
             >
               {">"}
