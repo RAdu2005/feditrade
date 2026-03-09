@@ -1,36 +1,97 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Fedimarket MVP
+
+Next.js marketplace MVP with:
+- Mastodon OAuth login (dynamic instance registration)
+- Public listing feed and listing details
+- Authenticated listing CRUD
+- S3-compatible image uploads (MinIO/S3)
+- ActivityPub endpoints (`WebFinger`, actor, inbox, outbox, objects)
+- Postgres-backed federation delivery queue + worker
+- Minimal admin tooling for takedown/retry
+
+## Tech Stack
+
+- Next.js 16 (App Router, TypeScript)
+- Prisma + PostgreSQL
+- Auth.js (`/api/auth/*`) with credentials bridge
+- AWS S3 SDK (MinIO-compatible)
+- Vitest + Playwright
 
 ## Getting Started
 
-First, run the development server:
+1. Install dependencies.
+
+```bash
+npm install
+```
+
+2. Ensure PostgreSQL is running on `localhost:5432` with:
+- user: `postgres`
+- password: `1234`
+
+3. Copy `.env.example` to `.env` if needed, then apply schema:
+
+```bash
+npx prisma migrate dev --name init
+```
+
+4. Run the web app:
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+5. Run the federation worker in a second terminal:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+npm run worker:dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Open `http://localhost:3000`.
 
-## Learn More
+## Docker Compose (One Command Local Stack)
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+docker compose up --build
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+This starts:
+- `app` on `http://localhost:3000`
+- `worker` for delivery queue
+- `postgres` on `5432`
+- `minio` on `http://localhost:9000` (console `:9001`)
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## API Surface
 
-## Deploy on Vercel
+- `GET /api/listings`
+- `POST /api/listings`
+- `PATCH /api/listings/:id`
+- `DELETE /api/listings/:id`
+- `POST /api/uploads/sign`
+- `GET /api/health`
+- `GET /api/admin/federation/failures`
+- `POST /api/admin/federation/retry/:jobId`
+- `POST /api/admin/listings/:id/takedown`
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+ActivityPub:
+- `GET /.well-known/webfinger`
+- `GET /ap/actor/:name`
+- `GET /ap/actor/:name/followers`
+- `POST /ap/inbox`
+- `GET /ap/outbox`
+- `GET /ap/objects/:id`
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Tests
+
+```bash
+npm run test
+npm run lint
+npm run typecheck
+```
+
+E2E:
+
+```bash
+npx playwright install
+npm run test:e2e
+```

@@ -1,0 +1,107 @@
+services:
+  postgres:
+    image: postgres:17
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: "1234"
+      POSTGRES_DB: market
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d market"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - minio_data:/data
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      - minio
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/market-listings &&
+      mc anonymous set public local/market-listings &&
+      exit 0
+      "
+
+  app:
+    build:
+      context: .
+      target: web
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:1234@postgres:5432/market?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: 3f7ed45c5a5b7f6af6bf668f6f9799fcd9b98de62f3c32f457f6d6f13bdf3b09
+      APP_BASE_URL: http://localhost:3000
+      AP_INSTANCE_DOMAIN: localhost:3000
+      AP_LISTINGS_ACTOR: listings
+      AP_PRIVATE_KEY_PEM: ${AP_PRIVATE_KEY_PEM}
+      AP_PUBLIC_KEY_PEM: ${AP_PUBLIC_KEY_PEM}
+      AP_FEDERATION_TARGETS: ""
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: market-listings
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_PUBLIC_BASE_URL: http://localhost:9000/market-listings
+      ADMIN_ACTOR_URIS: ""
+    ports:
+      - "3000:3000"
+
+  worker:
+    build:
+      context: .
+      target: worker
+    depends_on:
+      postgres:
+        condition: service_healthy
+      app:
+        condition: service_started
+    environment:
+      NODE_ENV: development
+      DATABASE_URL: postgresql://postgres:1234@postgres:5432/market?schema=public
+      NEXTAUTH_URL: http://localhost:3000
+      NEXTAUTH_SECRET: 3f7ed45c5a5b7f6af6bf668f6f9799fcd9b98de62f3c32f457f6d6f13bdf3b09
+      APP_BASE_URL: http://localhost:3000
+      AP_INSTANCE_DOMAIN: localhost:3000
+      AP_LISTINGS_ACTOR: listings
+      AP_PRIVATE_KEY_PEM: ${AP_PRIVATE_KEY_PEM}
+      AP_PUBLIC_KEY_PEM: ${AP_PUBLIC_KEY_PEM}
+      AP_FEDERATION_TARGETS: ""
+      S3_REGION: us-east-1
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: market-listings
+      S3_ACCESS_KEY_ID: minioadmin
+      S3_SECRET_ACCESS_KEY: minioadmin
+      S3_PUBLIC_BASE_URL: http://localhost:9000/market-listings
+      ADMIN_ACTOR_URIS: ""
+    healthcheck:
+      test: ["CMD-SHELL", "npm run worker:health"]
+      interval: 15s
+      timeout: 10s
+      retries: 5
+
+volumes:
+  postgres_data:
+  minio_data:
