@@ -1,7 +1,7 @@
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireUserWithReason } from "@/lib/auth-helpers";
 import { env } from "@/lib/env";
 import { jsonCreated, jsonError } from "@/lib/http";
 import { buildObjectKey, getPublicObjectUrl, putObject } from "@/lib/s3";
@@ -34,8 +34,11 @@ async function saveToLocalDisk(contentType: string, data: Buffer) {
 }
 
 export async function POST(request: Request) {
-  const user = await requireUser();
+  const { user, reason } = await requireUserWithReason();
   if (!user) {
+    if (reason === "STALE_SESSION") {
+      return jsonError("Session is stale. Please sign in again.", 401);
+    }
     return jsonError("Unauthorized", 401);
   }
 

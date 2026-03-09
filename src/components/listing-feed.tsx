@@ -56,12 +56,14 @@ export function ListingFeed({ initial }: { initial: FeedPayload }) {
           <li key={listing.id} className="rounded border border-slate-200 bg-white p-4">
             <div className="flex flex-col gap-3 sm:flex-row">
               {listing.images[0] ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={listing.images[0].url}
-                  alt={listing.title}
-                  className="h-32 w-full rounded object-cover sm:w-40"
-                />
+                <div className="h-32 w-full overflow-hidden rounded border border-slate-200 bg-slate-50 sm:w-40">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={listing.images[0].url}
+                    alt={listing.title}
+                    className="h-full w-full object-contain"
+                  />
+                </div>
               ) : (
                 <div className="h-32 w-full rounded bg-slate-100 sm:w-40" />
               )}

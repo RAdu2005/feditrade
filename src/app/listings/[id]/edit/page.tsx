@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { ListingForm } from "@/components/listing-form";
+import { requireUser } from "@/lib/auth-helpers";
 import { getListingById } from "@/lib/listing-service";
 
 type Params = {
@@ -9,14 +9,14 @@ type Params = {
 
 export default async function EditListingPage({ params }: Params) {
   const { id } = await params;
-  const [session, listing] = await Promise.all([auth(), getListingById(id)]);
-  if (!session?.user) {
+  const [user, listing] = await Promise.all([requireUser(), getListingById(id)]);
+  if (!user) {
     redirect("/auth/signin");
   }
   if (!listing) {
     notFound();
   }
-  if (session.user.mastodonActorUri !== listing.owner.actorUri) {
+  if (user.mastodonActorUri !== listing.owner.actorUri) {
     redirect(`/listings/${id}`);
   }
 
@@ -35,6 +35,7 @@ export default async function EditListingPage({ params }: Params) {
             location: listing.location,
             category: listing.category,
             imageKeys: listing.images.map((image) => image.key),
+            imageUrls: listing.images.map((image) => image.url),
           }}
         />
       </div>

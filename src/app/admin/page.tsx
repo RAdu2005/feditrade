@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { requireAdmin } from "@/lib/auth-helpers";
 import { prisma } from "@/lib/prisma";
 
 export default async function AdminPage() {
-  const session = await auth();
-  if (!session?.user || session.user.role !== "ADMIN") {
+  const user = await requireAdmin();
+  if (!user) {
     redirect("/");
   }
 

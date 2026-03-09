@@ -1,7 +1,8 @@
+import { Prisma } from "@prisma/client";
 import { childLogger } from "@/lib/logger";
 import { jsonCreated, jsonError, jsonOk } from "@/lib/http";
 import { createListing, listPublicListings } from "@/lib/listing-service";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireUserWithReason } from "@/lib/auth-helpers";
 import { listingCreateSchema } from "@/lib/validators";
 
 export async function GET(request: Request) {
@@ -15,8 +16,11 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   const logger = childLogger({ route: "POST /api/listings" });
-  const user = await requireUser();
+  const { user, reason } = await requireUserWithReason();
   if (!user) {
+    if (reason === "STALE_SESSION") {
+      return jsonError("Session is stale. Please sign in again.", 401);
+    }
     return jsonError("Unauthorized", 401);
   }
 
@@ -30,6 +34,9 @@ export async function POST(request: Request) {
     const listing = await createListing(user.id, parsed.data);
     return jsonCreated(listing);
   } catch (error) {
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2003") {
+      return jsonError("Session is stale. Please sign in again.", 401);
+    }
     logger.error({ err: error }, "Failed to create listing");
     return jsonError("Failed to create listing", 500);
   }

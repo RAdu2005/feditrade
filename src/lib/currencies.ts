@@ -1,3 +1,5 @@
+import currencyCodes from "currency-codes";
+
 const nonCirculatingCurrencyCodes = new Set([
   "BOV",
   "CHE",
@@ -26,18 +28,10 @@ const nonCirculatingCurrencyCodes = new Set([
 const defaultPriorityCurrencyCodes = ["EUR", "USD", "CNY"];
 
 function currencyDisplayName(code: string) {
-  try {
-    const displayNames = new Intl.DisplayNames(["en"], { type: "currency" });
-    return displayNames.of(code) ?? code;
-  } catch {
-    return code;
-  }
+  return currencyCodes.code(code)?.currency ?? code;
 }
 
-const supportedCurrencyCodes =
-  typeof Intl.supportedValuesOf === "function"
-    ? Intl.supportedValuesOf("currency")
-    : ["EUR", "USD", "CNY"];
+const supportedCurrencyCodes = currencyCodes.codes();
 
 export const MASS_CIRCULATION_CURRENCY_CODES = supportedCurrencyCodes
   .filter((code) => /^[A-Z]{3}$/.test(code))

@@ -15,15 +15,25 @@ const currencyCodeSchema = z
   });
 
 export const listingCreateSchema = z.object({
-  title: z.string().min(3).max(120),
-  description: z.string().min(10).max(5000),
-  priceAmount: z.number().nonnegative().max(1_000_000).optional().nullable(),
-  priceCurrency: currencyCodeSchema.optional().nullable(),
-  location: z.string().max(120).optional().nullable(),
-  category: z.string().max(60).optional().nullable(),
-  imageKeys: z.array(z.string().min(1)).max(6).optional().default([]),
+  title: z.string().trim().min(3).max(120),
+  description: z.string().trim().min(10).max(5000),
+  priceAmount: z.number().positive().max(1_000_000),
+  priceCurrency: currencyCodeSchema,
+  location: z.string().trim().min(2).max(160),
+  category: z.string().trim().min(2).max(60),
+  imageKeys: z.array(z.string().min(1)).min(1).max(6),
 });
 
-export const listingUpdateSchema = listingCreateSchema.partial().extend({
+export const listingUpdateSchema = z
+  .object({
+    title: z.string().trim().min(3).max(120).optional(),
+    description: z.string().trim().min(10).max(5000).optional(),
+    priceAmount: z.number().positive().max(1_000_000).nullable().optional(),
+    priceCurrency: currencyCodeSchema.nullable().optional(),
+    location: z.string().trim().min(2).max(160).nullable().optional(),
+    category: z.string().trim().min(2).max(60).nullable().optional(),
+    imageKeys: z.array(z.string().min(1)).max(6).optional(),
+  })
+  .extend({
   status: z.enum(["ACTIVE", "SOLD", "REMOVED"]).optional(),
 });

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { DeleteListingButton } from "@/components/delete-listing-button";
+import { ListingImageGallery } from "@/components/listing-image-gallery";
 import { getListingById } from "@/lib/listing-service";
 
 type Params = {
@@ -28,19 +29,7 @@ export default async function ListingDetailsPage({ params }: Params) {
         </p>
         <p className="mt-4 whitespace-pre-wrap text-slate-800">{listing.description}</p>
 
-        {listing.images.length > 0 ? (
-          <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-            {listing.images.map((image) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img
-                key={image.id}
-                src={image.url}
-                alt={listing.title}
-                className="h-64 w-full rounded object-cover"
-              />
-            ))}
-          </div>
-        ) : null}
+        {listing.images.length > 0 ? <ListingImageGallery images={listing.images} altBase={listing.title} /> : null}
 
         <div className="mt-6 text-sm text-slate-700">
           <div className="flex items-center gap-2">

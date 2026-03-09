@@ -1,20 +1,17 @@
-const nonCountryRegionCodes = new Set(["EU", "EZ", "UN", "ZZ"]);
+import countries from "i18n-iso-countries";
+import enLocale from "i18n-iso-countries/langs/en.json";
+
+const nonCountryRegionCodes = new Set(["EU", "EZ", "TW", "UN", "ZZ"]);
 const defaultPriorityCountryCodes = ["FI", "US", "CN"];
 
+countries.registerLocale(enLocale);
+
 function regionDisplayName(code: string) {
-  try {
-    const displayNames = new Intl.DisplayNames(["en"], { type: "region" });
-    return displayNames.of(code) ?? code;
-  } catch {
-    return code;
-  }
+  const localeName = countries.getName(code, "en");
+  return localeName ?? code;
 }
 
-const supportedRegionCodes =
-  typeof Intl.supportedValuesOf === "function"
-    ? ((Intl as { supportedValuesOf: (type: string) => string[] }).supportedValuesOf("region") ??
-      defaultPriorityCountryCodes)
-    : defaultPriorityCountryCodes;
+const supportedRegionCodes = Object.keys(countries.getAlpha2Codes());
 
 export const COUNTRY_TERRITORY_CODES = supportedRegionCodes
   .filter((code) => /^[A-Z]{2}$/.test(code))

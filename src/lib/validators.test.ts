@@ -7,7 +7,9 @@ describe("validators", () => {
       description: "Used laptop in good condition",
       priceAmount: 850,
       priceCurrency: "EUR",
-      imageKeys: [],
+      location: "Helsinki, Finland",
+      category: "Electronics & Appliances",
+      imageKeys: ["listings/2026-01-01/sample.jpg"],
     });
 
     expect(parsed.success).toBe(true);
@@ -19,7 +21,9 @@ describe("validators", () => {
       description: "Used laptop in good condition",
       priceAmount: 850,
       priceCurrency: "XAU",
-      imageKeys: [],
+      location: "Helsinki, Finland",
+      category: "Electronics & Appliances",
+      imageKeys: ["listings/2026-01-01/sample.jpg"],
     });
 
     expect(parsed.success).toBe(false);

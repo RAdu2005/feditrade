@@ -1,5 +1,5 @@
 import { getListingById, updateListing, deleteListing } from "@/lib/listing-service";
-import { requireUser } from "@/lib/auth-helpers";
+import { requireUserWithReason } from "@/lib/auth-helpers";
 import { jsonError, jsonOk } from "@/lib/http";
 import { listingUpdateSchema } from "@/lib/validators";
 
@@ -19,8 +19,11 @@ export async function GET(_: Request, context: Params) {
 
 export async function PATCH(request: Request, context: Params) {
   const { id } = await context.params;
-  const user = await requireUser();
+  const { user, reason } = await requireUserWithReason();
   if (!user) {
+    if (reason === "STALE_SESSION") {
+      return jsonError("Session is stale. Please sign in again.", 401);
+    }
     return jsonError("Unauthorized", 401);
   }
 
@@ -40,8 +43,11 @@ export async function PATCH(request: Request, context: Params) {
 
 export async function DELETE(_: Request, context: Params) {
   const { id } = await context.params;
-  const user = await requireUser();
+  const { user, reason } = await requireUserWithReason();
   if (!user) {
+    if (reason === "STALE_SESSION") {
+      return jsonError("Session is stale. Please sign in again.", 401);
+    }
     return jsonError("Unauthorized", 401);
   }
 

@@ -1,10 +1,10 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
 import { ListingForm } from "@/components/listing-form";
+import { requireUser } from "@/lib/auth-helpers";
 
 export default async function NewListingPage() {
-  const session = await auth();
-  if (!session?.user) {
+  const user = await requireUser();
+  if (!user) {
     redirect("/auth/signin");
   }
 

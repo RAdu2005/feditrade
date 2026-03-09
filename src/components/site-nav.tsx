@@ -1,9 +1,9 @@
 import Link from "next/link";
-import { auth } from "@/auth";
 import { SignOutButton } from "@/components/sign-out-button";
+import { requireUser } from "@/lib/auth-helpers";
 
 export async function SiteNav() {
-  const session = await auth();
+  const user = await requireUser();
   return (
     <header className="border-b border-slate-200">
       <div className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4">
@@ -12,26 +12,26 @@ export async function SiteNav() {
         </Link>
         <nav className="flex items-center gap-3 text-sm">
           <Link href="/">Listings</Link>
-          {session?.user ? <Link href="/listings/new">Create listing</Link> : null}
-          {session?.user?.role === "ADMIN" ? <Link href="/admin">Admin</Link> : null}
-          {session?.user ? (
+          {user ? <Link href="/listings/new">Create listing</Link> : null}
+          {user?.role === "ADMIN" ? <Link href="/admin">Admin</Link> : null}
+          {user ? (
             <>
               <Link
-                href={`https://${session.user.mastodonDomain}/@${session.user.mastodonUsername}`}
+                href={`https://${user.mastodonDomain}/@${user.mastodonUsername}`}
                 target="_blank"
                 className="inline-flex items-center gap-2"
               >
-                {session.user.image ? (
+                {user.image ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img
-                    src={session.user.image}
-                    alt={session.user.mastodonUsername}
+                    src={user.image}
+                    alt={user.mastodonUsername}
                     className="h-6 w-6 rounded-full border border-slate-200 object-cover"
                   />
                 ) : (
                   <span className="h-6 w-6 rounded-full border border-slate-200 bg-slate-100" />
                 )}
-                <span>@{session.user.mastodonUsername}</span>
+                <span>@{user.mastodonUsername}</span>
               </Link>
               <SignOutButton />
             </>

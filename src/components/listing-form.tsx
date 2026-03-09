@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useMemo, useRef, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 import {
   MASS_CIRCULATION_CURRENCY_CODE_SET,
@@ -23,6 +23,7 @@ type ListingDraft = {
   location?: string | null;
   category?: string | null;
   imageKeys?: string[];
+  imageUrls?: string[];
 };
 
 type Props = {
@@ -30,6 +31,62 @@ type Props = {
   listingId?: string;
   initial?: ListingDraft;
 };
+
+type FormField =
+  | "title"
+  | "description"
+  | "priceAmount"
+  | "priceCurrency"
+  | "locationCountry"
+  | "locationCity"
+  | "categorySelection"
+  | "customCategory"
+  | "imageKeys";
+
+type FormErrors = Partial<Record<FormField, string>>;
+
+const PRESET_CATEGORIES = [
+  "Cars & Bikes",
+  "Homes",
+  "Electronics & Appliances",
+  "Fashion & Beauty",
+  "Auto Parts",
+  "Home & Garden",
+  "Mother & Child",
+  "Sports & Leisure",
+  "Pets",
+  "Industrial",
+  "Other",
+] as const;
+
+const OTHER_CATEGORY = "Other";
+const maxImages = 6;
+
+type UploadedImage = {
+  key: string;
+  previewUrl: string;
+};
+
+function parseCategory(category: string | null | undefined) {
+  if (!category) {
+    return {
+      selected: "",
+      custom: "",
+    };
+  }
+
+  if ((PRESET_CATEGORIES as readonly string[]).includes(category)) {
+    return {
+      selected: category,
+      custom: "",
+    };
+  }
+
+  return {
+    selected: OTHER_CATEGORY,
+    custom: category,
+  };
+}
 
 function parseLocation(location: string | null | undefined) {
   if (!location) {
@@ -84,31 +141,82 @@ async function uploadImage(file: File) {
     body: formData,
   });
 
-  if (!uploadResponse.ok) {
-    throw new Error("Failed to upload image.");
-  }
-
-  const uploaded = (await uploadResponse.json()) as {
-    key: string;
+  const payload = (await uploadResponse.json().catch(() => ({}))) as {
+    key?: string;
+    publicUrl?: string;
+    error?: string;
   };
 
-  return uploaded.key;
+  if (!uploadResponse.ok || !payload.key) {
+    throw new Error(payload.error ?? "Failed to upload image.");
+  }
+
+  return {
+    key: payload.key,
+    previewUrl: payload.publicUrl ?? payload.key,
+  } satisfies UploadedImage;
+}
+
+function parseServerErrors(details: unknown): FormErrors {
+  const fieldErrors: FormErrors = {};
+  if (!details || typeof details !== "object") {
+    return fieldErrors;
+  }
+
+  const record = details as {
+    fieldErrors?: Record<string, string[] | undefined>;
+  };
+  if (!record.fieldErrors) {
+    return fieldErrors;
+  }
+
+  const read = (name: string) => record.fieldErrors?.[name]?.[0];
+  const locationError = read("location");
+  const categoryError = read("category");
+
+  if (read("title")) fieldErrors.title = read("title");
+  if (read("description")) fieldErrors.description = read("description");
+  if (read("priceAmount")) fieldErrors.priceAmount = read("priceAmount");
+  if (read("priceCurrency")) fieldErrors.priceCurrency = read("priceCurrency");
+  if (locationError) {
+    fieldErrors.locationCountry = locationError;
+    fieldErrors.locationCity = locationError;
+  }
+  if (categoryError) {
+    fieldErrors.categorySelection = categoryError;
+  }
+  if (read("imageKeys")) fieldErrors.imageKeys = read("imageKeys");
+
+  return fieldErrors;
 }
 
 export function ListingForm({ mode, listingId, initial }: Props) {
   const router = useRouter();
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const initialLocation = parseLocation(initial?.location);
+  const initialCategory = parseCategory(initial?.category);
+  const defaultCurrency = PRIORITY_CURRENCY_CODES[0] ?? "EUR";
+
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceAmount, setPriceAmount] = useState(initial?.priceAmount ?? "");
-  const [priceCurrency, setPriceCurrency] = useState(initial?.priceCurrency ?? "EUR");
+  const [priceCurrency, setPriceCurrency] = useState(initial?.priceCurrency ?? defaultCurrency);
   const [locationCountry, setLocationCountry] = useState(initialLocation.countryCode);
   const [locationCity, setLocationCity] = useState(initialLocation.city);
-  const [category, setCategory] = useState(initial?.category ?? "");
+  const [categorySelection, setCategorySelection] = useState(initialCategory.selected);
+  const [customCategory, setCustomCategory] = useState(initialCategory.custom);
   const [status, setStatus] = useState<"ACTIVE" | "SOLD" | "REMOVED">("ACTIVE");
-  const [imageKeys, setImageKeys] = useState<string[]>(initial?.imageKeys ?? []);
-  const [error, setError] = useState<string | null>(null);
+  const [images, setImages] = useState<UploadedImage[]>(
+    (initial?.imageKeys ?? []).map((key, index) => ({
+      key,
+      previewUrl: initial?.imageUrls?.[index] ?? key,
+    })),
+  );
+  const [fieldErrors, setFieldErrors] = useState<FormErrors>({});
+  const [errorMessages, setErrorMessages] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+  const [uploadingImage, setUploadingImage] = useState(false);
+  const imageKeys = useMemo(() => images.map((image) => image.key), [images]);
 
   const submitLabel = useMemo(() => (mode === "create" ? "Create listing" : "Save changes"), [mode]);
   const pinnedCurrencySet = useMemo(() => new Set<string>(PRIORITY_CURRENCY_CODES), []);
@@ -139,45 +247,102 @@ export function ListingForm({ mode, listingId, initial }: Props) {
   );
 
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
+    const input = event.currentTarget;
+    const file = input.files?.[0];
     if (!file) {
+      return;
+    }
+    if (images.length >= maxImages) {
+      setErrorMessages([`You can upload up to ${maxImages} images.`]);
+      input.value = "";
       return;
     }
 
     try {
-      const key = await uploadImage(file);
-      setImageKeys((keys) => [...keys, key].slice(0, 6));
+      setUploadingImage(true);
+      const uploadedImage = await uploadImage(file);
+      setImages((existing) => [...existing, uploadedImage].slice(0, maxImages));
+      setFieldErrors((prev) => ({ ...prev, imageKeys: undefined }));
+      setErrorMessages([]);
     } catch (uploadError) {
-      setError(uploadError instanceof Error ? uploadError.message : "Image upload failed.");
+      setErrorMessages([uploadError instanceof Error ? uploadError.message : "Image upload failed."]);
+    } finally {
+      setUploadingImage(false);
+      input.value = "";
     }
+  }
+
+  function onRemoveImage(index: number) {
+    setImages((existing) => existing.filter((_, currentIndex) => currentIndex !== index));
   }
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSaving(true);
-    setError(null);
+    setFieldErrors({});
+    setErrorMessages([]);
 
+    const normalizedTitle = title.trim();
+    const normalizedDescription = description.trim();
+    const parsedPrice = Number(priceAmount);
     const normalizedCity = locationCity.trim();
-    const selectedCountry = locationCountry
+    const selectedCountryName = locationCountry
       ? COUNTRY_OPTION_BY_CODE.get(locationCountry)?.name ?? null
       : null;
     const location =
-      normalizedCity && selectedCountry
-        ? `${normalizedCity}, ${selectedCountry}`
-        : normalizedCity || selectedCountry || null;
+      normalizedCity && selectedCountryName
+        ? `${normalizedCity}, ${selectedCountryName}`
+        : normalizedCity || selectedCountryName || null;
+    const normalizedCustomCategory = customCategory.trim();
+    const category =
+      categorySelection === OTHER_CATEGORY
+        ? normalizedCustomCategory || null
+        : categorySelection || null;
 
-    const payload = {
-      title,
-      description,
-      priceAmount: priceAmount ? Number(priceAmount) : null,
+    const nextFieldErrors: FormErrors = {};
+    if (!normalizedTitle) nextFieldErrors.title = "Title is required.";
+    if (!normalizedDescription) nextFieldErrors.description = "Description is required.";
+    if (mode === "create" && (!Number.isFinite(parsedPrice) || parsedPrice <= 0)) {
+      nextFieldErrors.priceAmount = "Price must be greater than 0.";
+    }
+    if (mode === "create" && !priceCurrency) {
+      nextFieldErrors.priceCurrency = "Currency is required.";
+    }
+    if (mode === "create" && !locationCountry) {
+      nextFieldErrors.locationCountry = "Country is required.";
+    }
+    if (mode === "create" && !normalizedCity) {
+      nextFieldErrors.locationCity = "City is required.";
+    }
+    if (mode === "create" && !categorySelection) {
+      nextFieldErrors.categorySelection = "Category is required.";
+    }
+    if (categorySelection === OTHER_CATEGORY && !normalizedCustomCategory) {
+      nextFieldErrors.customCategory = "Custom category is required.";
+    }
+    if (mode === "create" && imageKeys.length === 0) {
+      nextFieldErrors.imageKeys = "At least one image is required.";
+    }
+
+    if (Object.keys(nextFieldErrors).length > 0) {
+      setFieldErrors(nextFieldErrors);
+      setSaving(false);
+      return;
+    }
+
+    const basePayload = {
+      title: normalizedTitle,
+      description: normalizedDescription,
+      priceAmount: Number.isFinite(parsedPrice) ? parsedPrice : null,
       priceCurrency: priceCurrency || null,
       location,
-      category: category || null,
-      status,
+      category,
       imageKeys,
     };
 
     const isCreate = mode === "create";
+    const payload = isCreate ? basePayload : { ...basePayload, status };
+
     const response = await fetch(isCreate ? "/api/listings" : `/api/listings/${listingId}`, {
       method: isCreate ? "POST" : "PATCH",
       headers: {
@@ -186,9 +351,15 @@ export function ListingForm({ mode, listingId, initial }: Props) {
       body: JSON.stringify(payload),
     });
 
-    const responsePayload = (await response.json().catch(() => ({}))) as { id?: string; error?: string };
+    const responsePayload = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      error?: string;
+      details?: unknown;
+    };
+
     if (!response.ok || !responsePayload.id) {
-      setError(responsePayload.error ?? "Failed to save listing.");
+      setFieldErrors(parseServerErrors(responsePayload.details));
+      setErrorMessages([responsePayload.error ?? "Failed to save listing."]);
       setSaving(false);
       return;
     }
@@ -208,8 +379,9 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="w-full rounded border border-slate-300 px-3 py-2"
-          required
+          required={mode === "create"}
         />
+        {fieldErrors.title ? <p className="mt-1 text-xs text-red-600">{fieldErrors.title}</p> : null}
       </div>
 
       <div>
@@ -221,8 +393,11 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           className="min-h-32 w-full rounded border border-slate-300 px-3 py-2"
-          required
+          required={mode === "create"}
         />
+        {fieldErrors.description ? (
+          <p className="mt-1 text-xs text-red-600">{fieldErrors.description}</p>
+        ) : null}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
@@ -234,11 +409,15 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             id="priceAmount"
             type="number"
             step="0.01"
-            min="0"
+            min="0.01"
             value={priceAmount}
             onChange={(event) => setPriceAmount(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
+            required={mode === "create"}
           />
+          {fieldErrors.priceAmount ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.priceAmount}</p>
+          ) : null}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="priceCurrency">
@@ -249,8 +428,8 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             value={priceCurrency ?? ""}
             onChange={(event) => setPriceCurrency(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
+            required={mode === "create"}
           >
-            <option value="">No currency</option>
             {hasUnknownSelectedCurrency ? (
               <option value={priceCurrency ?? ""}>{priceCurrency} - Unknown (legacy)</option>
             ) : null}
@@ -266,6 +445,9 @@ export function ListingForm({ mode, listingId, initial }: Props) {
               </option>
             ))}
           </select>
+          {fieldErrors.priceCurrency ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.priceCurrency}</p>
+          ) : null}
         </div>
       </div>
 
@@ -279,8 +461,11 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             value={locationCountry}
             onChange={(event) => setLocationCountry(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
+            required={mode === "create"}
           >
-            <option value="">No country</option>
+            <option value="" disabled>
+              Select country / territory
+            </option>
             {hasUnknownSelectedCountry ? (
               <option value={locationCountry}>{locationCountry} - Unknown (legacy)</option>
             ) : null}
@@ -296,6 +481,9 @@ export function ListingForm({ mode, listingId, initial }: Props) {
               </option>
             ))}
           </select>
+          {fieldErrors.locationCountry ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.locationCountry}</p>
+          ) : null}
         </div>
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="locationCity">
@@ -307,7 +495,12 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             onChange={(event) => setLocationCity(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
             placeholder="City"
+            required={mode === "create"}
+            maxLength={120}
           />
+          {fieldErrors.locationCity ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.locationCity}</p>
+          ) : null}
         </div>
       </div>
 
@@ -316,13 +509,45 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           <label className="mb-1 block text-sm font-medium" htmlFor="category">
             Category
           </label>
-          <input
+          <select
             id="category"
-            value={category}
-            onChange={(event) => setCategory(event.target.value)}
+            value={categorySelection}
+            onChange={(event) => setCategorySelection(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-          />
+            required={mode === "create"}
+          >
+            <option value="" disabled>
+              Select category
+            </option>
+            {PRESET_CATEGORIES.map((category) => (
+              <option key={category} value={category}>
+                {category}
+              </option>
+            ))}
+          </select>
+          {fieldErrors.categorySelection ? (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.categorySelection}</p>
+          ) : null}
         </div>
+        {categorySelection === OTHER_CATEGORY ? (
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="customCategory">
+              Custom category
+            </label>
+            <input
+              id="customCategory"
+              value={customCategory}
+              onChange={(event) => setCustomCategory(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              placeholder="Enter custom category"
+              maxLength={60}
+              required={mode === "create"}
+            />
+            {fieldErrors.customCategory ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.customCategory}</p>
+            ) : null}
+          </div>
+        ) : null}
       </div>
 
       {mode === "edit" ? (
@@ -344,22 +569,68 @@ export function ListingForm({ mode, listingId, initial }: Props) {
       ) : null}
 
       <div>
-        <label className="mb-1 block text-sm font-medium" htmlFor="imageUpload">
-          Image (optional)
+        <label className="mb-2 block text-sm font-medium" htmlFor="imageUpload">
+          Images
         </label>
         <input
+          ref={imageInputRef}
           id="imageUpload"
           type="file"
           accept="image/png,image/jpeg,image/webp"
           onChange={onFileChange}
-          className="w-full rounded border border-slate-300 px-3 py-2"
+          className="sr-only"
         />
-        {imageKeys.length > 0 ? (
-          <p className="mt-2 text-xs text-slate-600">{imageKeys.length} image(s) attached.</p>
+        <button
+          type="button"
+          onClick={() => imageInputRef.current?.click()}
+          disabled={uploadingImage || imageKeys.length >= maxImages}
+          className="inline-flex h-12 w-12 items-center justify-center rounded border border-slate-300 text-2xl text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50"
+          aria-label="Add image"
+          title="Add image"
+        >
+          +
+        </button>
+        <p className="mt-2 text-xs text-slate-600">
+          {uploadingImage
+            ? "Uploading image..."
+            : `${imageKeys.length}/${maxImages} image(s) attached.`}
+        </p>
+        {images.length > 0 ? (
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            {images.map((image, index) => (
+              <div
+                key={`${image.key}-${index}`}
+                className="relative aspect-square overflow-hidden rounded border border-slate-200 bg-slate-100"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={image.previewUrl}
+                  alt={`Listing image ${index + 1}`}
+                  className="h-full w-full object-cover"
+                />
+                <button
+                  type="button"
+                  onClick={() => onRemoveImage(index)}
+                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full bg-slate-900/80 text-sm text-white"
+                  aria-label={`Remove image ${index + 1}`}
+                  title="Remove image"
+                >
+                  x
+                </button>
+              </div>
+            ))}
+          </div>
         ) : null}
+        {fieldErrors.imageKeys ? <p className="mt-1 text-xs text-red-600">{fieldErrors.imageKeys}</p> : null}
       </div>
 
-      {error ? <p className="text-sm text-red-600">{error}</p> : null}
+      {errorMessages.length > 0 ? (
+        <div className="rounded border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {errorMessages.map((message, index) => (
+            <p key={`${message}-${index}`}>{message}</p>
+          ))}
+        </div>
+      ) : null}
 
       <button
         type="submit"
