@@ -2,6 +2,18 @@
 
 import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  MASS_CIRCULATION_CURRENCY_CODE_SET,
+  MASS_CIRCULATION_CURRENCY_OPTIONS,
+  PRIORITY_CURRENCY_CODES,
+} from "@/lib/currencies";
+import {
+  COUNTRY_CODE_BY_NAME,
+  COUNTRY_OPTION_BY_CODE,
+  COUNTRY_TERRITORY_CODE_SET,
+  COUNTRY_TERRITORY_OPTIONS,
+  PRIORITY_COUNTRY_CODES,
+} from "@/lib/regions";
 
 type ListingDraft = {
   title?: string;
@@ -19,49 +31,79 @@ type Props = {
   initial?: ListingDraft;
 };
 
-async function uploadImage(file: File) {
-  const signResponse = await fetch("/api/uploads/sign", {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      contentType: file.type,
-      sizeBytes: file.size,
-    }),
-  });
-
-  if (!signResponse.ok) {
-    throw new Error("Failed to sign upload.");
+function parseLocation(location: string | null | undefined) {
+  if (!location) {
+    return {
+      countryCode: "",
+      city: "",
+    };
   }
 
-  const signed = (await signResponse.json()) as {
-    uploadUrl: string;
-    key: string;
-  };
+  const normalized = location.trim();
+  if (!normalized) {
+    return {
+      countryCode: "",
+      city: "",
+    };
+  }
 
-  const uploadResponse = await fetch(signed.uploadUrl, {
-    method: "PUT",
-    headers: {
-      "content-type": file.type,
-    },
-    body: file,
+  const separatorIndex = normalized.lastIndexOf(",");
+  if (separatorIndex > -1) {
+    const cityPart = normalized.slice(0, separatorIndex).trim();
+    const countryPart = normalized.slice(separatorIndex + 1).trim().toLowerCase();
+    const countryCode = COUNTRY_CODE_BY_NAME.get(countryPart);
+
+    if (countryCode) {
+      return {
+        countryCode,
+        city: cityPart,
+      };
+    }
+  }
+
+  const asCountryCode = COUNTRY_CODE_BY_NAME.get(normalized.toLowerCase());
+  if (asCountryCode) {
+    return {
+      countryCode: asCountryCode,
+      city: "",
+    };
+  }
+
+  return {
+    countryCode: "",
+    city: normalized,
+  };
+}
+
+async function uploadImage(file: File) {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const uploadResponse = await fetch("/api/uploads", {
+    method: "POST",
+    body: formData,
   });
 
   if (!uploadResponse.ok) {
     throw new Error("Failed to upload image.");
   }
 
-  return signed.key;
+  const uploaded = (await uploadResponse.json()) as {
+    key: string;
+  };
+
+  return uploaded.key;
 }
 
 export function ListingForm({ mode, listingId, initial }: Props) {
   const router = useRouter();
+  const initialLocation = parseLocation(initial?.location);
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceAmount, setPriceAmount] = useState(initial?.priceAmount ?? "");
   const [priceCurrency, setPriceCurrency] = useState(initial?.priceCurrency ?? "EUR");
-  const [location, setLocation] = useState(initial?.location ?? "");
+  const [locationCountry, setLocationCountry] = useState(initialLocation.countryCode);
+  const [locationCity, setLocationCity] = useState(initialLocation.city);
   const [category, setCategory] = useState(initial?.category ?? "");
   const [status, setStatus] = useState<"ACTIVE" | "SOLD" | "REMOVED">("ACTIVE");
   const [imageKeys, setImageKeys] = useState<string[]>(initial?.imageKeys ?? []);
@@ -69,6 +111,32 @@ export function ListingForm({ mode, listingId, initial }: Props) {
   const [saving, setSaving] = useState(false);
 
   const submitLabel = useMemo(() => (mode === "create" ? "Create listing" : "Save changes"), [mode]);
+  const pinnedCurrencySet = useMemo(() => new Set<string>(PRIORITY_CURRENCY_CODES), []);
+  const pinnedCurrencyOptions = useMemo(
+    () => MASS_CIRCULATION_CURRENCY_OPTIONS.filter((option) => pinnedCurrencySet.has(option.code)),
+    [pinnedCurrencySet],
+  );
+  const otherCurrencyOptions = useMemo(
+    () => MASS_CIRCULATION_CURRENCY_OPTIONS.filter((option) => !pinnedCurrencySet.has(option.code)),
+    [pinnedCurrencySet],
+  );
+  const hasUnknownSelectedCurrency = useMemo(
+    () => !!priceCurrency && !MASS_CIRCULATION_CURRENCY_CODE_SET.has(priceCurrency),
+    [priceCurrency],
+  );
+  const pinnedCountrySet = useMemo(() => new Set<string>(PRIORITY_COUNTRY_CODES), []);
+  const pinnedCountryOptions = useMemo(
+    () => COUNTRY_TERRITORY_OPTIONS.filter((option) => pinnedCountrySet.has(option.code)),
+    [pinnedCountrySet],
+  );
+  const otherCountryOptions = useMemo(
+    () => COUNTRY_TERRITORY_OPTIONS.filter((option) => !pinnedCountrySet.has(option.code)),
+    [pinnedCountrySet],
+  );
+  const hasUnknownSelectedCountry = useMemo(
+    () => !!locationCountry && !COUNTRY_TERRITORY_CODE_SET.has(locationCountry),
+    [locationCountry],
+  );
 
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0];
@@ -89,12 +157,21 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     setSaving(true);
     setError(null);
 
+    const normalizedCity = locationCity.trim();
+    const selectedCountry = locationCountry
+      ? COUNTRY_OPTION_BY_CODE.get(locationCountry)?.name ?? null
+      : null;
+    const location =
+      normalizedCity && selectedCountry
+        ? `${normalizedCity}, ${selectedCountry}`
+        : normalizedCity || selectedCountry || null;
+
     const payload = {
       title,
       description,
       priceAmount: priceAmount ? Number(priceAmount) : null,
       priceCurrency: priceCurrency || null,
-      location: location || null,
+      location,
       category: category || null,
       status,
       imageKeys,
@@ -167,28 +244,74 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           <label className="mb-1 block text-sm font-medium" htmlFor="priceCurrency">
             Currency
           </label>
-          <input
+          <select
             id="priceCurrency"
             value={priceCurrency ?? ""}
-            onChange={(event) => setPriceCurrency(event.target.value.toUpperCase())}
+            onChange={(event) => setPriceCurrency(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-            maxLength={3}
-          />
+          >
+            <option value="">No currency</option>
+            {hasUnknownSelectedCurrency ? (
+              <option value={priceCurrency ?? ""}>{priceCurrency} - Unknown (legacy)</option>
+            ) : null}
+            {pinnedCurrencyOptions.map((option) => (
+              <option key={`pinned-${option.code}`} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+            <option disabled>--------------------</option>
+            {otherCurrencyOptions.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
         </div>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         <div>
-          <label className="mb-1 block text-sm font-medium" htmlFor="location">
-            Location
+          <label className="mb-1 block text-sm font-medium" htmlFor="locationCountry">
+            Country / territory
+          </label>
+          <select
+            id="locationCountry"
+            value={locationCountry}
+            onChange={(event) => setLocationCountry(event.target.value)}
+            className="w-full rounded border border-slate-300 px-3 py-2"
+          >
+            <option value="">No country</option>
+            {hasUnknownSelectedCountry ? (
+              <option value={locationCountry}>{locationCountry} - Unknown (legacy)</option>
+            ) : null}
+            {pinnedCountryOptions.map((option) => (
+              <option key={`pinned-country-${option.code}`} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+            <option disabled>--------------------</option>
+            {otherCountryOptions.map((option) => (
+              <option key={option.code} value={option.code}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="mb-1 block text-sm font-medium" htmlFor="locationCity">
+            City
           </label>
           <input
-            id="location"
-            value={location}
-            onChange={(event) => setLocation(event.target.value)}
+            id="locationCity"
+            value={locationCity}
+            onChange={(event) => setLocationCity(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
+            placeholder="City"
           />
         </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
         <div>
           <label className="mb-1 block text-sm font-medium" htmlFor="category">
             Category

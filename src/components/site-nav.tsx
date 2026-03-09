@@ -16,8 +16,22 @@ export async function SiteNav() {
           {session?.user?.role === "ADMIN" ? <Link href="/admin">Admin</Link> : null}
           {session?.user ? (
             <>
-              <Link href={`https://${session.user.mastodonDomain}/@${session.user.mastodonUsername}`} target="_blank">
-                @{session.user.mastodonUsername}
+              <Link
+                href={`https://${session.user.mastodonDomain}/@${session.user.mastodonUsername}`}
+                target="_blank"
+                className="inline-flex items-center gap-2"
+              >
+                {session.user.image ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img
+                    src={session.user.image}
+                    alt={session.user.mastodonUsername}
+                    className="h-6 w-6 rounded-full border border-slate-200 object-cover"
+                  />
+                ) : (
+                  <span className="h-6 w-6 rounded-full border border-slate-200 bg-slate-100" />
+                )}
+                <span>@{session.user.mastodonUsername}</span>
               </Link>
               <SignOutButton />
             </>

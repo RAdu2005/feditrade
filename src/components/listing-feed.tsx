@@ -14,6 +14,8 @@ type ListingItem = {
   createdAt: string;
   owner: {
     actorUri: string;
+    username: string;
+    image: string | null;
   };
   images: {
     url: string;
@@ -73,12 +75,21 @@ export function ListingFeed({ initial }: { initial: FeedPayload }) {
                     ? `${listing.priceAmount} ${listing.priceCurrency}`
                     : "Price not specified"}
                 </p>
-                <p className="mt-1 text-xs text-slate-600">
-                  Seller:{" "}
+                <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                  {listing.owner.image ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={listing.owner.image}
+                      alt={listing.owner.username}
+                      className="h-5 w-5 rounded-full border border-slate-200 object-cover"
+                    />
+                  ) : (
+                    <span className="h-5 w-5 rounded-full border border-slate-200 bg-slate-100" />
+                  )}
                   <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
-                    Mastodon profile
+                    @{listing.owner.username}
                   </a>
-                </p>
+                </div>
               </div>
             </div>
           </li>

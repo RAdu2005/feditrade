@@ -1,4 +1,4 @@
-import { listingCreateSchema, signUploadSchema } from "@/lib/validators";
+import { listingCreateSchema } from "@/lib/validators";
 
 describe("validators", () => {
   it("accepts valid listing payload", () => {
@@ -13,11 +13,15 @@ describe("validators", () => {
     expect(parsed.success).toBe(true);
   });
 
-  it("rejects unsupported upload types", () => {
-    const parsed = signUploadSchema.safeParse({
-      contentType: "application/pdf",
-      sizeBytes: 1000,
+  it("rejects non-circulating or unsupported currency", () => {
+    const parsed = listingCreateSchema.safeParse({
+      title: "MacBook Pro",
+      description: "Used laptop in good condition",
+      priceAmount: 850,
+      priceCurrency: "XAU",
+      imageKeys: [],
     });
+
     expect(parsed.success).toBe(false);
   });
 });

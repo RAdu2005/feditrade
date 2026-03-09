@@ -15,6 +15,7 @@ const listingInclude = {
   owner: {
     select: {
       id: true,
+      image: true,
       mastodonActorUri: true,
       mastodonUsername: true,
       mastodonDomain: true,
@@ -43,6 +44,7 @@ function listingToApi(listing: ListingWithRelations) {
       actorUri: listing.owner.mastodonActorUri,
       username: listing.owner.mastodonUsername,
       domain: listing.owner.mastodonDomain,
+      image: listing.owner.image,
     },
     images: listing.images.map((image) => ({
       id: image.id,

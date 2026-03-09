@@ -49,6 +49,13 @@ npm run worker:dev
 
 Open `http://localhost:3000`.
 
+Uploads use S3/MinIO via backend (`POST /api/uploads`).  
+Set `ALLOW_LOCAL_UPLOAD_FALLBACK="true"` only if you explicitly want fallback to `public/uploads` when S3 is unavailable.
+
+UI priority configuration:
+- `NEXT_PUBLIC_PRIORITY_CURRENCIES` (CSV, default `EUR,USD,CNY`)
+- `NEXT_PUBLIC_PRIORITY_COUNTRIES` (CSV of ISO-3166 alpha-2, default `FI,US,CN`)
+
 ## Docker Compose (One Command Local Stack)
 
 ```bash
@@ -67,7 +74,7 @@ This starts:
 - `POST /api/listings`
 - `PATCH /api/listings/:id`
 - `DELETE /api/listings/:id`
-- `POST /api/uploads/sign`
+- `POST /api/uploads`
 - `GET /api/health`
 - `GET /api/admin/federation/failures`
 - `POST /api/admin/federation/retry/:jobId`

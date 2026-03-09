@@ -18,6 +18,10 @@ const envSchema = z.object({
   S3_ACCESS_KEY_ID: z.string().min(1),
   S3_SECRET_ACCESS_KEY: z.string().min(1),
   S3_PUBLIC_BASE_URL: z.string().url(),
+  ALLOW_LOCAL_UPLOAD_FALLBACK: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false"),
 });
 
 const parsed = envSchema.safeParse(process.env);
@@ -40,6 +44,7 @@ export const env = {
   ...parsed.data,
   AP_FEDERATION_TARGETS: splitCsv(parsed.data.AP_FEDERATION_TARGETS),
   ADMIN_ACTOR_URIS: splitCsv(parsed.data.ADMIN_ACTOR_URIS),
+  ALLOW_LOCAL_UPLOAD_FALLBACK: parsed.data.ALLOW_LOCAL_UPLOAD_FALLBACK === "true",
 };
 
 export type Env = typeof env;

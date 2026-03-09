@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 import { env } from "@/lib/env";
 
 export const s3Client = new S3Client({
@@ -14,20 +13,27 @@ export const s3Client = new S3Client({
 });
 
 export function getPublicObjectUrl(key: string) {
+  if (key.startsWith("http://") || key.startsWith("https://")) {
+    return key;
+  }
   return `${env.S3_PUBLIC_BASE_URL.replace(/\/+$/, "")}/${key}`;
 }
 
-export async function createSignedUploadUrl(params: {
-  contentType: string;
-  maxSizeBytes: number;
-}) {
-  const key = `listings/${new Date().toISOString().slice(0, 10)}/${randomUUID()}`;
-  const command = new PutObjectCommand({
-    Bucket: env.S3_BUCKET,
-    Key: key,
-    ContentType: params.contentType,
-  });
+export function buildObjectKey() {
+  return `listings/${new Date().toISOString().slice(0, 10)}/${randomUUID()}`;
+}
 
-  const url = await getSignedUrl(s3Client, command, { expiresIn: 60 * 5 });
-  return { key, url };
+export async function putObject(params: {
+  key: string;
+  body: Buffer;
+  contentType: string;
+}) {
+  await s3Client.send(
+    new PutObjectCommand({
+      Bucket: env.S3_BUCKET,
+      Key: params.key,
+      Body: params.body,
+      ContentType: params.contentType,
+    }),
+  );
 }

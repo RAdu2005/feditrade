@@ -21,3 +21,4 @@ process.env.S3_ACCESS_KEY_ID = process.env.S3_ACCESS_KEY_ID ?? "minioadmin";
 process.env.S3_SECRET_ACCESS_KEY = process.env.S3_SECRET_ACCESS_KEY ?? "minioadmin";
 process.env.S3_PUBLIC_BASE_URL =
   process.env.S3_PUBLIC_BASE_URL ?? "http://localhost:9000/market-listings";
+process.env.ALLOW_LOCAL_UPLOAD_FALLBACK = process.env.ALLOW_LOCAL_UPLOAD_FALLBACK ?? "false";

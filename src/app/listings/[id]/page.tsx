@@ -43,12 +43,21 @@ export default async function ListingDetailsPage({ params }: Params) {
         ) : null}
 
         <div className="mt-6 text-sm text-slate-700">
-          <p>
-            Seller:{" "}
+          <div className="flex items-center gap-2">
+            {listing.owner.image ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={listing.owner.image}
+                alt={listing.owner.username}
+                className="h-7 w-7 rounded-full border border-slate-200 object-cover"
+              />
+            ) : (
+              <span className="h-7 w-7 rounded-full border border-slate-200 bg-slate-100" />
+            )}
             <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
-              Contact via Mastodon profile
+              @{listing.owner.username}
             </a>
-          </p>
+          </div>
           {listing.location ? <p className="mt-1">Location: {listing.location}</p> : null}
           {listing.category ? <p className="mt-1">Category: {listing.category}</p> : null}
         </div>
