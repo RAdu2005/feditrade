@@ -38,33 +38,28 @@ async function fetchActorInbox(actorUrl: string) {
 }
 
 async function sendAcceptFollow(params: {
+  actor: string;
   inbox: string;
+  sharedInbox?: string | null;
   followActivity: ActivityPayload;
 }) {
-  const followObject =
-    typeof params.followActivity.object === "object" && params.followActivity.object
-      ? params.followActivity.object
-      : {
-          type: "Follow",
-          actor: params.followActivity.actor,
-          object: listingsActorId(),
-        };
+  const followToAccept = {
+    id: params.followActivity.id,
+    type: "Follow",
+    actor: params.followActivity.actor,
+    object: listingsActorId(),
+  };
 
   const acceptActivity = {
     "@context": ["https://www.w3.org/ns/activitystreams"],
     id: `${baseUrl()}/ap/activities/${crypto.randomUUID()}`,
     type: "Accept",
     actor: listingsActorId(),
-    object:
-      params.followActivity.id && typeof followObject === "object"
-        ? {
-            id: params.followActivity.id,
-            ...(followObject as Record<string, unknown>),
-          }
-        : followObject,
+    to: [params.actor],
+    object: followToAccept,
   };
 
-  const targetUrl = new URL(params.inbox);
+  const targetUrl = new URL(params.sharedInbox ?? params.inbox);
   const body = JSON.stringify(acceptActivity);
   const signedHeaders = signFederatedRequest({
     method: "post",
@@ -129,23 +124,25 @@ export async function processInboundActivity(activity: ActivityPayload) {
 
   if (activity.type === "Follow" && activity.object === listingsActorId()) {
     const actor = activity.actor;
-    const inbox = await fetchActorInbox(actor);
+    const inboxes = await fetchActorInbox(actor);
 
     await sendAcceptFollow({
-      inbox: inbox.inbox,
+      actor,
+      inbox: inboxes.inbox,
+      sharedInbox: inboxes.sharedInbox,
       followActivity: activity,
     });
 
     await prisma.federationFollower.upsert({
       where: { actor },
       update: {
-        inbox: inbox.inbox,
-        sharedInbox: inbox.sharedInbox ?? null,
+        inbox: inboxes.inbox,
+        sharedInbox: inboxes.sharedInbox ?? null,
       },
       create: {
         actor,
-        inbox: inbox.inbox,
-        sharedInbox: inbox.sharedInbox ?? null,
+        inbox: inboxes.inbox,
+        sharedInbox: inboxes.sharedInbox ?? null,
       },
     });
     return;
