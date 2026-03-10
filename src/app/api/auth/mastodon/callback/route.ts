@@ -3,13 +3,17 @@ import { env } from "@/lib/env";
 import { exchangeMastodonCode } from "@/lib/mastodon";
 import { prisma } from "@/lib/prisma";
 
+function appUrl(path: string) {
+  return new URL(path, env.APP_BASE_URL.replace(/\/+$/, "") + "/");
+}
+
 export async function GET(request: NextRequest) {
   const url = new URL(request.url);
   const code = url.searchParams.get("code");
   const state = url.searchParams.get("state");
 
   if (!code || !state) {
-    return NextResponse.redirect(new URL("/auth/signin?error=missing_oauth_params", request.url));
+    return NextResponse.redirect(appUrl("/auth/signin?error=missing_oauth_params"));
   }
 
   try {
@@ -50,17 +54,16 @@ export async function GET(request: NextRequest) {
     });
 
     const callbackUrl = request.cookies.get("fm_after_login")?.value;
-    const completeUrl = new URL(
+    const completeUrl = appUrl(
       `/auth/complete?loginToken=${encodeURIComponent(loginToken)}${
         callbackUrl ? `&callbackUrl=${encodeURIComponent(callbackUrl)}` : ""
       }`,
-      request.url,
     );
 
     const response = NextResponse.redirect(completeUrl);
     response.cookies.delete("fm_after_login");
     return response;
   } catch {
-    return NextResponse.redirect(new URL("/auth/signin?error=oauth_failed", request.url));
+    return NextResponse.redirect(appUrl("/auth/signin?error=oauth_failed"));
   }
 }
