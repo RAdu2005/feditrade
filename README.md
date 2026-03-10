@@ -63,10 +63,10 @@ docker compose up --build
 ```
 
 This starts:
-- `app` on `http://localhost:3000`
+- `app` on `http://localhost:3300`
 - `worker` for delivery queue
-- `postgres` on `5432`
-- `minio` on `http://localhost:9000` (console `:9001`)
+- `postgres` on `127.0.0.1:55432`
+- `minio` on `http://127.0.0.1:3900` (console `:3901`)
 
 PostgreSQL runs inside Docker Compose with defaults:
 - user: `postgres`
@@ -74,6 +74,7 @@ PostgreSQL runs inside Docker Compose with defaults:
 - database: `market`
 
 You can override these with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
+You can override host port bindings with `APP_PORT_BIND`, `MINIO_API_PORT_BIND`, `MINIO_CONSOLE_PORT_BIND`, `POSTGRES_PORT_BIND`.
 
 ## API Surface
 
