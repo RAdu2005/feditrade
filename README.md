@@ -68,6 +68,13 @@ This starts:
 - `postgres` on `5432`
 - `minio` on `http://localhost:9000` (console `:9001`)
 
+PostgreSQL runs inside Docker Compose with defaults:
+- user: `postgres`
+- password: `1234`
+- database: `market`
+
+You can override these with `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`.
+
 ## API Surface
 
 - `GET /api/listings`
