@@ -174,9 +174,14 @@ function parseSignatureHeader(value: string): SignatureParams | null {
   const pairs = value
     .split(",")
     .map((part) => part.trim())
-    .map((part) => {
-      const [k, v] = part.split("=");
-      return [k, v?.replace(/^"|"$/g, "")];
+    .map((part): [string, string | undefined] => {
+      const separatorIndex = part.indexOf("=");
+      if (separatorIndex < 0) {
+        return [part, undefined];
+      }
+      const key = part.slice(0, separatorIndex);
+      const rawValue = part.slice(separatorIndex + 1);
+      return [key, rawValue.replace(/^"|"$/g, "")];
     });
 
   const map = Object.fromEntries(pairs);
@@ -297,15 +302,33 @@ export async function verifyIncomingSignature(params: {
     return false;
   }
 
+  const forwardedHost = params.request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const requestUrl = new URL(params.request.url);
+  const canonicalHeaders: Record<string, string> = {
+    host: forwardedHost || host,
+    date,
+    digest: digestHeader,
+  };
+
+  for (const headerName of parsed.headers) {
+    if (headerName === "(request-target)") {
+      continue;
+    }
+    if (headerName in canonicalHeaders) {
+      continue;
+    }
+
+    const headerValue = params.request.headers.get(headerName);
+    if (!headerValue) {
+      return false;
+    }
+    canonicalHeaders[headerName] = headerValue;
+  }
+
   const signingPayload = signingString(parsed.headers, {
     method: params.request.method.toLowerCase(),
     path: `${requestUrl.pathname}${requestUrl.search}`,
-    headers: {
-      host,
-      date,
-      digest: digestHeader,
-    },
+    headers: canonicalHeaders,
   });
 
   const verifier = createVerify("RSA-SHA256");

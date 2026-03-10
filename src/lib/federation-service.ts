@@ -1,5 +1,6 @@
 import { baseUrl, listingsActorId, signFederatedRequest } from "@/lib/activitypub";
 import { env } from "@/lib/env";
+import { childLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
 
 type ActivityPayload = {
@@ -7,7 +8,10 @@ type ActivityPayload = {
   type?: string;
   actor?: string;
   object?: unknown;
+  [key: string]: unknown;
 };
+
+const logger = childLogger({ module: "federation-service" });
 
 async function fetchActorInbox(actorUrl: string) {
   const response = await fetch(actorUrl, {
@@ -43,12 +47,15 @@ async function sendAcceptFollow(params: {
   sharedInbox?: string | null;
   followActivity: ActivityPayload;
 }) {
-  const followToAccept = {
-    id: params.followActivity.id,
-    type: "Follow",
-    actor: params.followActivity.actor,
-    object: listingsActorId(),
-  };
+  const followToAccept: Record<string, unknown> =
+    params.followActivity.id && params.followActivity.type === "Follow"
+      ? { ...params.followActivity }
+      : {
+          id: params.followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
+          type: "Follow",
+          actor: params.followActivity.actor,
+          object: listingsActorId(),
+        };
 
   const acceptActivity = {
     "@context": ["https://www.w3.org/ns/activitystreams"],
@@ -59,25 +66,45 @@ async function sendAcceptFollow(params: {
     object: followToAccept,
   };
 
-  const targetUrl = new URL(params.sharedInbox ?? params.inbox);
   const body = JSON.stringify(acceptActivity);
-  const signedHeaders = signFederatedRequest({
-    method: "post",
-    url: targetUrl,
-    body,
-  });
 
-  const response = await fetch(targetUrl, {
-    method: "POST",
-    headers: {
-      ...signedHeaders,
-      accept: "application/activity+json",
-    },
-    body,
-  });
+  const targets = [...new Set([params.inbox, params.sharedInbox].filter(Boolean) as string[])];
+  const errors: string[] = [];
 
-  if (!response.ok) {
-    throw new Error(`Failed to send Accept for Follow: ${response.status}`);
+  for (const target of targets) {
+    const targetUrl = new URL(target);
+    const signedHeaders = signFederatedRequest({
+      method: "post",
+      url: targetUrl,
+      body,
+    });
+
+    const response = await fetch(targetUrl, {
+      method: "POST",
+      headers: {
+        ...signedHeaders,
+        accept: "application/activity+json",
+      },
+      body,
+    });
+
+    if (response.ok) {
+      logger.info(
+        {
+          followActor: params.actor,
+          targetInbox: target,
+          followId: params.followActivity.id,
+        },
+        "Sent Accept for Follow",
+      );
+      return;
+    }
+
+    errors.push(`${target} -> ${response.status}`);
+  }
+
+  if (errors.length > 0) {
+    throw new Error(`Failed to send Accept for Follow: ${errors.join("; ")}`);
   }
 }
 
@@ -126,13 +153,6 @@ export async function processInboundActivity(activity: ActivityPayload) {
     const actor = activity.actor;
     const inboxes = await fetchActorInbox(actor);
 
-    await sendAcceptFollow({
-      actor,
-      inbox: inboxes.inbox,
-      sharedInbox: inboxes.sharedInbox,
-      followActivity: activity,
-    });
-
     await prisma.federationFollower.upsert({
       where: { actor },
       update: {
@@ -145,6 +165,14 @@ export async function processInboundActivity(activity: ActivityPayload) {
         sharedInbox: inboxes.sharedInbox ?? null,
       },
     });
+
+    await sendAcceptFollow({
+      actor,
+      inbox: inboxes.inbox,
+      sharedInbox: inboxes.sharedInbox,
+      followActivity: activity,
+    });
+
     return;
   }
 
