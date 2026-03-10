@@ -1,5 +1,5 @@
-import { env } from "@/lib/env";
-import { prisma } from "@/lib/prisma";
+import { env } from "./env";
+import { prisma } from "./prisma";
 import { Prisma } from "@prisma/client";
 
 function parseTargetSpec(spec: string) {

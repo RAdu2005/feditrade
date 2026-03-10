@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { prisma } from "@/lib/prisma";
+import { prisma } from "../lib/prisma";
 
 async function check() {
   await prisma.$queryRaw`SELECT 1`;

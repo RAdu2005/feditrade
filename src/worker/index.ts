@@ -1,7 +1,7 @@
 import "dotenv/config";
-import { markDeliveryFailure, markDeliveryProcessing, markDeliverySuccess, getNextDeliveryJob } from "@/lib/delivery-queue";
-import { signFederatedRequest } from "@/lib/activitypub";
-import { logger } from "@/lib/logger";
+import { markDeliveryFailure, markDeliveryProcessing, markDeliverySuccess, getNextDeliveryJob } from "../lib/delivery-queue";
+import { signFederatedRequest } from "../lib/activitypub";
+import { logger } from "../lib/logger";
 
 const POLL_INTERVAL_MS = 4000;
 const IDLE_INTERVAL_MS = 3000;

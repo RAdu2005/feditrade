@@ -1,5 +1,5 @@
 import { createHash, createSign, createVerify } from "node:crypto";
-import { env } from "@/lib/env";
+import { env } from "./env";
 
 export const ACTIVITY_STREAMS_CONTEXT = "https://www.w3.org/ns/activitystreams";
 
