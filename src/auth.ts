@@ -11,6 +11,7 @@ const credentialsSchema = z.object({
 
 export const authConfig = {
   secret: env.NEXTAUTH_SECRET,
+  trustHost: env.AUTH_TRUST_HOST,
   session: {
     strategy: "jwt",
     maxAge: 60 * 60 * 24 * 7,

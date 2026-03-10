@@ -51,6 +51,7 @@ Open `http://localhost:3000`.
 
 Uploads use S3/MinIO via backend (`POST /api/uploads`).  
 Set `ALLOW_LOCAL_UPLOAD_FALLBACK="true"` only if you explicitly want fallback to `public/uploads` when S3 is unavailable.
+If running behind a reverse proxy or cloudflared tunnel, set `AUTH_TRUST_HOST="true"`.
 
 UI priority configuration:
 - `NEXT_PUBLIC_PRIORITY_CURRENCIES` (CSV, default `EUR,USD,CNY`)

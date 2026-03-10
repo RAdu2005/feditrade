@@ -5,6 +5,10 @@ const envSchema = z.object({
   DATABASE_URL: z.string().min(1),
   NEXTAUTH_URL: z.string().url(),
   NEXTAUTH_SECRET: z.string().min(32),
+  AUTH_TRUST_HOST: z
+    .enum(["true", "false"])
+    .optional()
+    .default("false"),
   APP_BASE_URL: z.string().url(),
   AP_INSTANCE_DOMAIN: z.string().min(1),
   AP_LISTINGS_ACTOR: z.string().min(1),
@@ -44,6 +48,7 @@ export const env = {
   ...parsed.data,
   AP_FEDERATION_TARGETS: splitCsv(parsed.data.AP_FEDERATION_TARGETS),
   ADMIN_ACTOR_URIS: splitCsv(parsed.data.ADMIN_ACTOR_URIS),
+  AUTH_TRUST_HOST: parsed.data.AUTH_TRUST_HOST === "true",
   ALLOW_LOCAL_UPLOAD_FALLBACK: parsed.data.ALLOW_LOCAL_UPLOAD_FALLBACK === "true",
 };
 
