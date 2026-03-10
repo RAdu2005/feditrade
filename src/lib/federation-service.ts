@@ -1,4 +1,4 @@
-import { listingsActorId } from "@/lib/activitypub";
+import { baseUrl, listingsActorId, signFederatedRequest } from "@/lib/activitypub";
 import { env } from "@/lib/env";
 import { prisma } from "@/lib/prisma";
 
@@ -35,6 +35,55 @@ async function fetchActorInbox(actorUrl: string) {
     inbox: actor.inbox,
     sharedInbox: actor.endpoints?.sharedInbox,
   };
+}
+
+async function sendAcceptFollow(params: {
+  inbox: string;
+  followActivity: ActivityPayload;
+}) {
+  const followObject =
+    typeof params.followActivity.object === "object" && params.followActivity.object
+      ? params.followActivity.object
+      : {
+          type: "Follow",
+          actor: params.followActivity.actor,
+          object: listingsActorId(),
+        };
+
+  const acceptActivity = {
+    "@context": ["https://www.w3.org/ns/activitystreams"],
+    id: `${baseUrl()}/ap/activities/${crypto.randomUUID()}`,
+    type: "Accept",
+    actor: listingsActorId(),
+    object:
+      params.followActivity.id && typeof followObject === "object"
+        ? {
+            id: params.followActivity.id,
+            ...(followObject as Record<string, unknown>),
+          }
+        : followObject,
+  };
+
+  const targetUrl = new URL(params.inbox);
+  const body = JSON.stringify(acceptActivity);
+  const signedHeaders = signFederatedRequest({
+    method: "post",
+    url: targetUrl,
+    body,
+  });
+
+  const response = await fetch(targetUrl, {
+    method: "POST",
+    headers: {
+      ...signedHeaders,
+      accept: "application/activity+json",
+    },
+    body,
+  });
+
+  if (!response.ok) {
+    throw new Error(`Failed to send Accept for Follow: ${response.status}`);
+  }
 }
 
 export async function persistInboundActivity(params: {
@@ -81,6 +130,12 @@ export async function processInboundActivity(activity: ActivityPayload) {
   if (activity.type === "Follow" && activity.object === listingsActorId()) {
     const actor = activity.actor;
     const inbox = await fetchActorInbox(actor);
+
+    await sendAcceptFollow({
+      inbox: inbox.inbox,
+      followActivity: activity,
+    });
+
     await prisma.federationFollower.upsert({
       where: { actor },
       update: {
