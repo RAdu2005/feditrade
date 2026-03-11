@@ -31,7 +31,13 @@ describe("activitypub helpers", () => {
 
     expect(note.type).toBe("Note");
     expect(note.url).toBe("https://example.test/listings/1");
-    expect(note.attachment.length).toBeGreaterThan(1);
+    expect(note.attachment).toEqual([
+      {
+        type: "Image",
+        url: "https://cdn.example/bike.jpg",
+      },
+    ]);
+    expect(note.content).toContain("Seller:");
   });
 
   it("creates Create activities around objects", () => {

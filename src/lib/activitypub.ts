@@ -25,6 +25,7 @@ export type ActivityPubActivity = {
   type: "Create" | "Update" | "Delete";
   actor: string;
   to: string[];
+  cc: string[];
   published: string;
   object: Record<string, unknown> | string;
 };
@@ -86,47 +87,12 @@ export function createListingNote(input: {
     attributedTo: listingsActorId(),
     published: input.updatedAt.toISOString(),
     url: input.canonicalUrl,
-    content: `<p><strong>${escapeHtml(input.title)}</strong></p><p>${escapeHtml(input.description)}</p>`,
-    attachment: [
-      {
-        type: "PropertyValue",
-        name: "seller",
-        value: input.ownerActorUri,
-      },
-      ...(input.priceAmount && input.priceCurrency
-        ? [
-            {
-              type: "PropertyValue",
-              name: "price",
-              value: `${input.priceAmount} ${input.priceCurrency}`,
-            },
-          ]
-        : []),
-      ...(input.category
-        ? [
-            {
-              type: "PropertyValue",
-              name: "category",
-              value: input.category,
-            },
-          ]
-        : []),
-      ...(input.location
-        ? [
-            {
-              type: "PropertyValue",
-              name: "location",
-              value: input.location,
-            },
-          ]
-        : []),
-      ...(input.imageUrls?.length
-        ? input.imageUrls.map((url) => ({
-            type: "Image",
-            url,
-          }))
-        : []),
-    ],
+    content: renderListingContent(input),
+    attachment:
+      input.imageUrls?.map((url) => ({
+        type: "Image",
+        url,
+      })) ?? [],
   };
 }
 
@@ -141,6 +107,7 @@ export function createActivity(params: {
     type: params.type,
     actor: listingsActorId(),
     to: ["https://www.w3.org/ns/activitystreams#Public"],
+    cc: [`${listingsActorId()}/followers`],
     published: new Date().toISOString(),
     object: params.object,
   };
@@ -168,6 +135,8 @@ type SignatureParams = {
   algorithm: string;
   headers: string[];
   signature: string;
+  created?: string;
+  expires?: string;
 };
 
 function parseSignatureHeader(value: string): SignatureParams | null {
@@ -194,6 +163,8 @@ function parseSignatureHeader(value: string): SignatureParams | null {
     algorithm: map.algorithm,
     headers: map.headers.split(" "),
     signature: map.signature,
+    created: map.created,
+    expires: map.expires,
   };
 }
 
@@ -204,17 +175,35 @@ function digest(body: string) {
 
 function signingLine(
   headerName: string,
-  req: { method: string; path: string; headers: Record<string, string> },
+  req: {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    created?: string;
+    expires?: string;
+  },
 ) {
   if (headerName === "(request-target)") {
     return `(request-target): ${req.method.toLowerCase()} ${req.path}`;
+  }
+  if (headerName === "(created)") {
+    return `(created): ${req.created ?? ""}`;
+  }
+  if (headerName === "(expires)") {
+    return `(expires): ${req.expires ?? ""}`;
   }
   return `${headerName}: ${req.headers[headerName]}`;
 }
 
 function signingString(
   headers: string[],
-  req: { method: string; path: string; headers: Record<string, string> },
+  req: {
+    method: string;
+    path: string;
+    headers: Record<string, string>;
+    created?: string;
+    expires?: string;
+  },
 ) {
   return headers.map((h) => signingLine(h, req)).join("\n");
 }
@@ -265,12 +254,8 @@ export async function verifyIncomingSignature(params: {
   body: string;
   actorUrl: string;
 }) {
-  const signatureHeader = params.request.headers.get("signature");
-  const date = params.request.headers.get("date");
-  const host = params.request.headers.get("host") ?? new URL(params.request.url).host;
-  const digestHeader = params.request.headers.get("digest");
-
-  if (!signatureHeader || !date || !digestHeader) {
+  const signatureHeader = getIncomingSignatureHeader(params.request);
+  if (!signatureHeader) {
     return false;
   }
 
@@ -279,7 +264,12 @@ export async function verifyIncomingSignature(params: {
     return false;
   }
 
-  if (digest(params.body) !== digestHeader) {
+  const digestHeader = params.request.headers.get("digest");
+  if (digestHeader && digest(params.body) !== digestHeader) {
+    return false;
+  }
+
+  if (parsed.headers.includes("digest") && !digestHeader) {
     return false;
   }
 
@@ -304,17 +294,29 @@ export async function verifyIncomingSignature(params: {
 
   const forwardedHost = params.request.headers.get("x-forwarded-host")?.split(",")[0]?.trim();
   const requestUrl = new URL(params.request.url);
-  const canonicalHeaders: Record<string, string> = {
-    host: forwardedHost || host,
-    date,
-    digest: digestHeader,
-  };
+  const canonicalHeaders: Record<string, string> = {};
 
   for (const headerName of parsed.headers) {
     if (headerName === "(request-target)") {
       continue;
     }
-    if (headerName in canonicalHeaders) {
+    if (headerName === "(created)") {
+      if (!parsed.created) {
+        return false;
+      }
+      continue;
+    }
+    if (headerName === "(expires)") {
+      if (!parsed.expires) {
+        return false;
+      }
+      continue;
+    }
+    if (headerName === "host") {
+      canonicalHeaders.host =
+        forwardedHost ||
+        params.request.headers.get("host") ||
+        requestUrl.host;
       continue;
     }
 
@@ -329,6 +331,8 @@ export async function verifyIncomingSignature(params: {
     method: params.request.method.toLowerCase(),
     path: `${requestUrl.pathname}${requestUrl.search}`,
     headers: canonicalHeaders,
+    created: parsed.created,
+    expires: parsed.expires,
   });
 
   const verifier = createVerify("RSA-SHA256");
@@ -336,6 +340,45 @@ export async function verifyIncomingSignature(params: {
   verifier.end();
 
   return verifier.verify(publicKeyPem, parsed.signature, "base64");
+}
+
+function getIncomingSignatureHeader(request: Request) {
+  const directSignature = request.headers.get("signature");
+  if (directSignature) {
+    return directSignature;
+  }
+
+  const authorization = request.headers.get("authorization");
+  if (authorization?.toLowerCase().startsWith("signature ")) {
+    return authorization.slice("signature ".length).trim();
+  }
+
+  return null;
+}
+
+function renderListingContent(input: {
+  title: string;
+  description: string;
+  canonicalUrl: string;
+  ownerActorUri: string;
+  priceAmount?: string | null;
+  priceCurrency?: string | null;
+  category?: string | null;
+  location?: string | null;
+}) {
+  const lines = [
+    `<p><strong>${escapeHtml(input.title)}</strong></p>`,
+    `<p>${escapeHtml(input.description)}</p>`,
+    `<p>Seller: <a href="${escapeHtml(input.ownerActorUri)}">${escapeHtml(input.ownerActorUri)}</a></p>`,
+    ...(input.priceAmount && input.priceCurrency
+      ? [`<p>Price: ${escapeHtml(input.priceAmount)} ${escapeHtml(input.priceCurrency)}</p>`]
+      : []),
+    ...(input.category ? [`<p>Category: ${escapeHtml(input.category)}</p>`] : []),
+    ...(input.location ? [`<p>Location: ${escapeHtml(input.location)}</p>`] : []),
+    `<p><a href="${escapeHtml(input.canonicalUrl)}">${escapeHtml(input.canonicalUrl)}</a></p>`,
+  ];
+
+  return lines.join("");
 }
 
 function escapeHtml(value: string) {

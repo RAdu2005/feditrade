@@ -1,12 +1,13 @@
 import { env } from "@/lib/env";
 import { jsonError, jsonOk } from "@/lib/http";
 import { prisma } from "@/lib/prisma";
+import { baseUrl } from "@/lib/activitypub";
 
 type Params = {
   params: Promise<{ name: string }>;
 };
 
-export async function GET(request: Request, context: Params) {
+export async function GET(_request: Request, context: Params) {
   const { name } = await context.params;
   if (name !== env.AP_LISTINGS_ACTOR) {
     return jsonError("Actor not found", 404);
@@ -18,7 +19,7 @@ export async function GET(request: Request, context: Params) {
     },
   });
 
-  const origin = new URL(request.url).origin;
+  const origin = baseUrl();
   return jsonOk(
     {
       "@context": "https://www.w3.org/ns/activitystreams",
