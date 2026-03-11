@@ -14,6 +14,7 @@ export type ActivityPubActor = {
   inbox: string;
   outbox: string;
   followers: string;
+  manuallyApprovesFollowers: boolean;
   publicKey: {
     id: string;
     owner: string;
@@ -62,6 +63,7 @@ export function listingsActorDocument(): ActivityPubActor {
     inbox: `${baseUrl()}/ap/inbox`,
     outbox: `${baseUrl()}/ap/outbox`,
     followers: `${baseUrl()}/ap/actor/${env.AP_LISTINGS_ACTOR}/followers`,
+    manuallyApprovesFollowers: false,
     publicKey: {
       id: listingsKeyId(),
       owner: listingsActorId(),

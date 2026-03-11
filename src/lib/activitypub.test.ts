@@ -12,6 +12,7 @@ describe("activitypub helpers", () => {
     const actor = listingsActorDocument();
     expect(actor.id).toBe(listingsActorId());
     expect(actor.type).toBe("Service");
+    expect(actor.manuallyApprovesFollowers).toBe(false);
     expect(actor.publicKey.id).toContain("#main-key");
   });
 
