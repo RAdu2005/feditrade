@@ -3,6 +3,7 @@ import {
   createListingNote,
   listingsActorDocument,
   listingsActorId,
+  normalizeActorReference,
   webfingerResponse,
 } from "@/lib/activitypub";
 
@@ -54,5 +55,16 @@ describe("activitypub helpers", () => {
   it("returns WebFinger payload", () => {
     const jrd = webfingerResponse();
     expect(jrd.links[0].rel).toBe("self");
+  });
+
+  it("normalizes actor references from either string or object", () => {
+    expect(normalizeActorReference("https://example.test/users/alice/")).toBe(
+      "https://example.test/users/alice",
+    );
+    expect(normalizeActorReference({ id: "https://example.test/users/bob/" })).toBe(
+      "https://example.test/users/bob",
+    );
+    expect(normalizeActorReference({ id: 123 })).toBeNull();
+    expect(normalizeActorReference(null)).toBeNull();
   });
 });

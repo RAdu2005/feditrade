@@ -1,4 +1,10 @@
-import { baseUrl, listingsActorId, signFederatedRequest } from "@/lib/activitypub";
+import { createHash } from "node:crypto";
+import {
+  ACTOR_FETCH_ACCEPT_HEADER,
+  baseUrl,
+  listingsActorId,
+  signFederatedRequest,
+} from "@/lib/activitypub";
 import { env } from "@/lib/env";
 import { childLogger } from "@/lib/logger";
 import { prisma } from "@/lib/prisma";
@@ -16,7 +22,7 @@ const logger = childLogger({ module: "federation-service" });
 async function fetchActorInbox(actorUrl: string) {
   const response = await fetch(actorUrl, {
     headers: {
-      accept: "application/activity+json, application/ld+json",
+      accept: ACTOR_FETCH_ACCEPT_HEADER,
     },
   });
 
@@ -47,7 +53,7 @@ async function sendAcceptFollow(params: {
   sharedInbox?: string | null;
   followActivity: ActivityPayload;
 }) {
-  const followToAccept = buildFollowObjectForAccept(params.followActivity);
+  const acceptObject = buildAcceptObject(params.followActivity);
 
   const acceptActivity = {
     "@context": ["https://www.w3.org/ns/activitystreams"],
@@ -55,7 +61,8 @@ async function sendAcceptFollow(params: {
     type: "Accept",
     actor: listingsActorId(),
     to: [params.actor],
-    object: followToAccept,
+    object: acceptObject,
+    published: new Date().toISOString(),
   };
 
   const body = JSON.stringify(acceptActivity);
@@ -86,7 +93,10 @@ async function sendAcceptFollow(params: {
       continue;
     }
 
-    failures.push(`${target} -> ${response.status}`);
+    const responseText = (await response.text()).slice(0, 300);
+    failures.push(
+      `${target} -> ${response.status}${responseText ? ` (${responseText.replace(/\s+/g, " ")})` : ""}`,
+    );
   }
 
   if (successes.length > 0) {
@@ -113,22 +123,25 @@ export async function persistInboundActivity(params: {
   processingError?: string;
   processed?: boolean;
 }) {
-  if (!params.activity.id || !params.activity.actor || !params.activity.type) {
+  if (!params.activity.actor || !params.activity.type) {
     return null;
   }
 
+  const persistedActivityId = resolvePersistedActivityId(params.activity);
+
   return prisma.inboxActivityLog.upsert({
     where: {
-      activityId: params.activity.id,
+      activityId: persistedActivityId,
     },
     update: {
       signatureValid: params.signatureValid,
       processed: params.processed ?? false,
       processingError: params.processingError ?? null,
       rawActivity: params.activity as object,
+      receivedAt: new Date(),
     },
     create: {
-      activityId: params.activity.id,
+      activityId: persistedActivityId,
       actor: params.activity.actor,
       activityType: params.activity.type,
       signatureValid: params.signatureValid,
@@ -176,15 +189,22 @@ export async function processInboundActivity(activity: ActivityPayload) {
   }
 
   if (activity.type === "Undo") {
-    const undoActor = extractUndoFollowActor(activity.object) ?? activity.actor;
-    if (undoActor) {
-      await prisma.federationFollower.deleteMany({
-        where: {
-          actor: undoActor,
-        },
-      });
+    const undoFollow = extractUndoFollow(activity.object);
+    if (!undoFollow) {
       return;
     }
+
+    const followActor = undoFollow.actor ?? activity.actor;
+    if (!followActor || !isFollowTargetingListingsActor(undoFollow.object)) {
+      return;
+    }
+
+    await prisma.federationFollower.deleteMany({
+      where: {
+        actor: followActor,
+      },
+    });
+    return;
   }
 
   if (
@@ -222,6 +242,10 @@ function normalizeUri(value: string) {
   return value.replace(/\/+$/, "");
 }
 
+function buildAcceptObject(followActivity: ActivityPayload): Record<string, unknown> {
+  return buildFollowObjectForAccept(followActivity);
+}
+
 function buildFollowObjectForAccept(followActivity: ActivityPayload): Record<string, unknown> {
   const hasValidFollowShape =
     followActivity.type === "Follow" &&
@@ -229,10 +253,7 @@ function buildFollowObjectForAccept(followActivity: ActivityPayload): Record<str
     isFollowTargetingListingsActor(followActivity.object);
 
   if (hasValidFollowShape) {
-    return {
-      ...(followActivity as Record<string, unknown>),
-      object: normalizeObjectId(followActivity.object) ?? listingsActorId(),
-    };
+    return { ...(followActivity as Record<string, unknown>) };
   }
 
   return {
@@ -248,15 +269,32 @@ function isFollowTargetingListingsActor(object: unknown) {
   return targetObjectId === normalizeUri(listingsActorId());
 }
 
-function extractUndoFollowActor(object: unknown) {
+function extractUndoFollow(object: unknown) {
   if (!object || typeof object !== "object") {
     return null;
   }
 
-  const undoObject = object as { type?: unknown; actor?: unknown };
+  const undoObject = object as { type?: unknown; actor?: unknown; object?: unknown };
   if (undoObject.type !== "Follow") {
     return null;
   }
 
-  return typeof undoObject.actor === "string" ? undoObject.actor : null;
+  return {
+    actor: typeof undoObject.actor === "string" ? undoObject.actor : null,
+    object: undoObject.object,
+  };
+}
+
+function resolvePersistedActivityId(activity: ActivityPayload) {
+  if (typeof activity.id === "string" && activity.id.trim().length > 0) {
+    return activity.id;
+  }
+
+  const fallbackSource = JSON.stringify({
+    actor: activity.actor,
+    type: activity.type,
+    object: activity.object ?? null,
+  });
+  const digest = createHash("sha256").update(fallbackSource).digest("hex");
+  return `urn:feditrade:inbox:${digest}`;
 }

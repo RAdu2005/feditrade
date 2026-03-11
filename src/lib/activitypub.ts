@@ -2,6 +2,8 @@ import { createHash, createSign, createVerify } from "node:crypto";
 import { env } from "./env";
 
 export const ACTIVITY_STREAMS_CONTEXT = "https://www.w3.org/ns/activitystreams";
+export const ACTOR_FETCH_ACCEPT_HEADER =
+  'application/activity+json, application/ld+json; profile="https://www.w3.org/ns/activitystreams", application/ld+json';
 
 export type ActivityPubActor = {
   "@context": string[];
@@ -274,20 +276,33 @@ export async function verifyIncomingSignature(params: {
     return false;
   }
 
-  const actorResponse = await fetch(params.actorUrl, {
-    headers: {
-      accept: "application/activity+json, application/ld+json",
-    },
-  });
+  let actorResponse: Response;
+  try {
+    actorResponse = await fetch(params.actorUrl, {
+      headers: {
+        accept: ACTOR_FETCH_ACCEPT_HEADER,
+      },
+    });
+  } catch {
+    return false;
+  }
 
   if (!actorResponse.ok) {
     return false;
   }
 
-  const actor = (await actorResponse.json()) as {
+  let actor: {
     id?: string;
     publicKey?: { id?: string; owner?: string; publicKeyPem?: string };
   };
+  try {
+    actor = (await actorResponse.json()) as {
+      id?: string;
+      publicKey?: { id?: string; owner?: string; publicKeyPem?: string };
+    };
+  } catch {
+    return false;
+  }
 
   const actorId = normalizeActorId(actor.id ?? params.actorUrl);
   if (!keyIdBelongsToActor(parsed.keyId, actorId, params.actorUrl)) {
@@ -390,6 +405,21 @@ function renderListingContent(input: {
 
 function normalizeActorId(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+export function normalizeActorReference(value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return normalizeActorId(value);
+  }
+
+  if (value && typeof value === "object") {
+    const actorId = (value as { id?: unknown }).id;
+    if (typeof actorId === "string" && actorId.trim().length > 0) {
+      return normalizeActorId(actorId);
+    }
+  }
+
+  return null;
 }
 
 function normalizeKeyId(value: string) {
