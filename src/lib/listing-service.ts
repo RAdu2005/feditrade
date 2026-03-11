@@ -79,6 +79,7 @@ function serializeActivity(listing: ListingWithRelations, type: "Create" | "Upda
     description: listing.description,
     canonicalUrl: listing.canonicalUrl,
     ownerActorUri: listing.owner.mastodonActorUri,
+    ownerHandle: `@${listing.owner.mastodonUsername}@${listing.owner.mastodonDomain}`,
     priceAmount: listing.priceAmount?.toString(),
     priceCurrency: listing.priceCurrency,
     category: listing.category,

@@ -23,6 +23,7 @@ describe("activitypub helpers", () => {
       description: "Good condition",
       canonicalUrl: "https://example.test/listings/1",
       ownerActorUri: "https://mastodon.social/@seller",
+      ownerHandle: "@seller@mastodon.social",
       priceAmount: "50.00",
       priceCurrency: "EUR",
       updatedAt: new Date("2026-03-09T00:00:00.000Z"),
@@ -42,7 +43,8 @@ describe("activitypub helpers", () => {
         mediaType: "image/jpeg",
       },
     ]);
-    expect(note.content).toContain("Seller:");
+    expect(note.content).toContain("Seller: @seller@mastodon.social");
+    expect(note.content).toContain(">Link</a>");
   });
 
   it("creates Create activities around objects", () => {

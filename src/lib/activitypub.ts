@@ -78,6 +78,7 @@ export function createListingNote(input: {
   description: string;
   canonicalUrl: string;
   ownerActorUri: string;
+  ownerHandle?: string | null;
   priceAmount?: string | null;
   priceCurrency?: string | null;
   category?: string | null;
@@ -388,15 +389,19 @@ function renderListingContent(input: {
   description: string;
   canonicalUrl: string;
   ownerActorUri: string;
+  ownerHandle?: string | null;
   priceAmount?: string | null;
   priceCurrency?: string | null;
   category?: string | null;
   location?: string | null;
 }) {
+  const sellerHandle = normalizeOwnerHandle(input.ownerHandle) ?? deriveOwnerHandle(input.ownerActorUri);
+  const sellerLabel = sellerHandle ?? input.ownerActorUri;
+
   const lines = [
     `<p><strong>${escapeHtml(input.title)}</strong></p>`,
     `<p>${escapeHtml(input.description)}</p>`,
-    `<p>Seller: <a href="${escapeHtml(input.ownerActorUri)}">${escapeHtml(input.ownerActorUri)}</a></p>`,
+    `<p>Seller: ${escapeHtml(sellerLabel)} (<a href="${escapeHtml(input.ownerActorUri)}">Link</a>)</p>`,
     ...(input.priceAmount && input.priceCurrency
       ? [`<p>Price: ${escapeHtml(input.priceAmount)} ${escapeHtml(input.priceCurrency)}</p>`]
       : []),
@@ -530,4 +535,46 @@ function getPathname(url: string) {
   } catch {
     return url.split("?")[0] ?? url;
   }
+}
+
+function normalizeOwnerHandle(value: string | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!trimmed.startsWith("@")) {
+    return `@${trimmed}`;
+  }
+
+  return trimmed;
+}
+
+function deriveOwnerHandle(actorUrl: string) {
+  try {
+    const parsed = new URL(actorUrl);
+    const domain = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    const segments = pathname.split("/").filter(Boolean);
+
+    if (segments.length === 1 && segments[0]?.startsWith("@")) {
+      return `${segments[0]}@${domain}`;
+    }
+
+    if (
+      segments.length >= 2 &&
+      segments[0]?.toLowerCase() === "users" &&
+      segments[1]
+    ) {
+      return `@${segments[1]}@${domain}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
 }
