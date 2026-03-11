@@ -47,15 +47,12 @@ async function sendAcceptFollow(params: {
   sharedInbox?: string | null;
   followActivity: ActivityPayload;
 }) {
-  const followToAccept: Record<string, unknown> =
-    params.followActivity.id && params.followActivity.type === "Follow"
-      ? { ...params.followActivity }
-      : {
-          id: params.followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
-          type: "Follow",
-          actor: params.followActivity.actor,
-          object: listingsActorId(),
-        };
+  const followToAccept: Record<string, unknown> = {
+    id: params.followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
+    type: "Follow",
+    actor: params.followActivity.actor,
+    object: normalizeObjectId(params.followActivity.object) ?? listingsActorId(),
+  };
 
   const acceptActivity = {
     "@context": ["https://www.w3.org/ns/activitystreams"],
@@ -63,7 +60,7 @@ async function sendAcceptFollow(params: {
     type: "Accept",
     actor: listingsActorId(),
     to: [params.actor],
-    object: followToAccept,
+    object: params.followActivity.id ?? followToAccept,
   };
 
   const body = JSON.stringify(acceptActivity);
@@ -149,7 +146,7 @@ export async function processInboundActivity(activity: ActivityPayload) {
     return;
   }
 
-  if (activity.type === "Follow" && activity.object === listingsActorId()) {
+  if (activity.type === "Follow" && isFollowTargetingListingsActor(activity.object)) {
     const actor = activity.actor;
     const inboxes = await fetchActorInbox(actor);
 
@@ -176,12 +173,12 @@ export async function processInboundActivity(activity: ActivityPayload) {
     return;
   }
 
-  if (activity.type === "Undo" && typeof activity.object === "object" && activity.object) {
-    const undoObject = activity.object as { type?: string; actor?: string; object?: string };
-    if (undoObject.type === "Follow" && undoObject.actor) {
+  if (activity.type === "Undo") {
+    const undoActor = extractUndoFollowActor(activity.object) ?? activity.actor;
+    if (undoActor) {
       await prisma.federationFollower.deleteMany({
         where: {
-          actor: undoObject.actor,
+          actor: undoActor,
         },
       });
       return;
@@ -202,4 +199,41 @@ export async function processInboundActivity(activity: ActivityPayload) {
       },
     });
   }
+}
+
+function normalizeObjectId(value: unknown) {
+  if (typeof value === "string") {
+    return normalizeUri(value);
+  }
+
+  if (value && typeof value === "object") {
+    const objectId = (value as { id?: unknown }).id;
+    if (typeof objectId === "string") {
+      return normalizeUri(objectId);
+    }
+  }
+
+  return null;
+}
+
+function normalizeUri(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function isFollowTargetingListingsActor(object: unknown) {
+  const targetObjectId = normalizeObjectId(object);
+  return targetObjectId === normalizeUri(listingsActorId());
+}
+
+function extractUndoFollowActor(object: unknown) {
+  if (!object || typeof object !== "object") {
+    return null;
+  }
+
+  const undoObject = object as { type?: unknown; actor?: unknown };
+  if (undoObject.type !== "Follow") {
+    return null;
+  }
+
+  return typeof undoObject.actor === "string" ? undoObject.actor : null;
 }

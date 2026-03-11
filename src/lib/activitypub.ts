@@ -284,10 +284,16 @@ export async function verifyIncomingSignature(params: {
   }
 
   const actor = (await actorResponse.json()) as {
-    publicKey?: { publicKeyPem?: string };
+    id?: string;
+    publicKey?: { id?: string; owner?: string; publicKeyPem?: string };
   };
 
-  const publicKeyPem = actor.publicKey?.publicKeyPem;
+  const actorId = normalizeActorId(actor.id ?? params.actorUrl);
+  if (!keyIdBelongsToActor(parsed.keyId, actorId, params.actorUrl)) {
+    return false;
+  }
+
+  const publicKeyPem = selectActorPublicKey(actor, parsed.keyId);
   if (!publicKeyPem) {
     return false;
   }
@@ -379,6 +385,39 @@ function renderListingContent(input: {
   ];
 
   return lines.join("");
+}
+
+function normalizeActorId(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function normalizeKeyId(value: string) {
+  const [base, fragment] = value.split("#", 2);
+  return `${normalizeActorId(base)}${fragment ? `#${fragment}` : ""}`;
+}
+
+function keyIdBelongsToActor(keyId: string, ...actorIds: string[]) {
+  const normalizedKeyId = normalizeKeyId(keyId);
+  return actorIds
+    .filter(Boolean)
+    .map(normalizeActorId)
+    .some((actorId) => normalizedKeyId === actorId || normalizedKeyId.startsWith(`${actorId}#`));
+}
+
+function selectActorPublicKey(
+  actor: { publicKey?: { id?: string; owner?: string; publicKeyPem?: string } },
+  expectedKeyId: string,
+) {
+  const publicKey = actor.publicKey;
+  if (!publicKey?.publicKeyPem) {
+    return null;
+  }
+
+  if (publicKey.id && normalizeKeyId(publicKey.id) !== normalizeKeyId(expectedKeyId)) {
+    return null;
+  }
+
+  return publicKey.publicKeyPem;
 }
 
 function escapeHtml(value: string) {
