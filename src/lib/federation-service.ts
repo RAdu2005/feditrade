@@ -47,12 +47,7 @@ async function sendAcceptFollow(params: {
   sharedInbox?: string | null;
   followActivity: ActivityPayload;
 }) {
-  const followToAccept: Record<string, unknown> = {
-    id: params.followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
-    type: "Follow",
-    actor: params.followActivity.actor,
-    object: normalizeObjectId(params.followActivity.object) ?? listingsActorId(),
-  };
+  const followToAccept = buildFollowObjectForAccept(params.followActivity);
 
   const acceptActivity = {
     "@context": ["https://www.w3.org/ns/activitystreams"],
@@ -60,13 +55,14 @@ async function sendAcceptFollow(params: {
     type: "Accept",
     actor: listingsActorId(),
     to: [params.actor],
-    object: params.followActivity.id ?? followToAccept,
+    object: followToAccept,
   };
 
   const body = JSON.stringify(acceptActivity);
 
   const targets = [...new Set([params.inbox, params.sharedInbox].filter(Boolean) as string[])];
-  const errors: string[] = [];
+  const successes: string[] = [];
+  const failures: string[] = [];
 
   for (const target of targets) {
     const targetUrl = new URL(target);
@@ -86,22 +82,28 @@ async function sendAcceptFollow(params: {
     });
 
     if (response.ok) {
-      logger.info(
-        {
-          followActor: params.actor,
-          targetInbox: target,
-          followId: params.followActivity.id,
-        },
-        "Sent Accept for Follow",
-      );
-      return;
+      successes.push(`${target} -> ${response.status}`);
+      continue;
     }
 
-    errors.push(`${target} -> ${response.status}`);
+    failures.push(`${target} -> ${response.status}`);
   }
 
-  if (errors.length > 0) {
-    throw new Error(`Failed to send Accept for Follow: ${errors.join("; ")}`);
+  if (successes.length > 0) {
+    logger.info(
+      {
+        followActor: params.actor,
+        followId: params.followActivity.id,
+        successTargets: successes,
+        failedTargets: failures,
+      },
+      "Sent Accept for Follow",
+    );
+    return;
+  }
+
+  if (failures.length > 0) {
+    throw new Error(`Failed to send Accept for Follow: ${failures.join("; ")}`);
   }
 }
 
@@ -218,6 +220,27 @@ function normalizeObjectId(value: unknown) {
 
 function normalizeUri(value: string) {
   return value.replace(/\/+$/, "");
+}
+
+function buildFollowObjectForAccept(followActivity: ActivityPayload): Record<string, unknown> {
+  const hasValidFollowShape =
+    followActivity.type === "Follow" &&
+    typeof followActivity.actor === "string" &&
+    isFollowTargetingListingsActor(followActivity.object);
+
+  if (hasValidFollowShape) {
+    return {
+      ...(followActivity as Record<string, unknown>),
+      object: normalizeObjectId(followActivity.object) ?? listingsActorId(),
+    };
+  }
+
+  return {
+    id: followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
+    type: "Follow",
+    actor: followActivity.actor,
+    object: normalizeObjectId(followActivity.object) ?? listingsActorId(),
+  };
 }
 
 function isFollowTargetingListingsActor(object: unknown) {
