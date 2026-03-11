@@ -33,7 +33,10 @@ async function processOneJob() {
     });
 
     if (!response.ok) {
-      throw new Error(`Remote inbox responded with ${response.status}`);
+      const responseText = (await response.text()).slice(0, 300).replace(/\s+/g, " ");
+      throw new Error(
+        `Remote inbox responded with ${response.status}${responseText ? ` (${responseText})` : ""}`,
+      );
     }
 
     await markDeliverySuccess(job.id);

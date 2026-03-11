@@ -33,10 +33,13 @@ describe("activitypub helpers", () => {
 
     expect(note.type).toBe("Note");
     expect(note.url).toBe("https://example.test/listings/1");
+    expect(note.to).toEqual(["https://www.w3.org/ns/activitystreams#Public"]);
+    expect(note.cc[0]).toContain("/followers");
     expect(note.attachment).toEqual([
       {
         type: "Image",
         url: "https://cdn.example/bike.jpg",
+        mediaType: "image/jpeg",
       },
     ]);
     expect(note.content).toContain("Seller:");

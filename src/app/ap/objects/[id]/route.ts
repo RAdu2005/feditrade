@@ -23,7 +23,10 @@ export async function GET(_: Request, context: Params) {
     priceCurrency: listing.priceCurrency,
     category: listing.category,
     location: listing.location,
-    imageUrls: listing.images.map((image) => image.url),
+    imageAttachments: listing.images.map((image) => ({
+      url: image.url,
+      mediaType: image.contentType,
+    })),
     updatedAt: listing.updatedAt,
   });
 

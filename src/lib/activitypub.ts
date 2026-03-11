@@ -82,9 +82,12 @@ export function createListingNote(input: {
   priceCurrency?: string | null;
   category?: string | null;
   location?: string | null;
+  imageAttachments?: Array<{ url: string; mediaType?: string | null }>;
   imageUrls?: string[];
   updatedAt: Date;
 }) {
+  const audience = defaultAudience();
+
   return {
     id: input.id,
     type: "Note",
@@ -92,11 +95,9 @@ export function createListingNote(input: {
     published: input.updatedAt.toISOString(),
     url: input.canonicalUrl,
     content: renderListingContent(input),
-    attachment:
-      input.imageUrls?.map((url) => ({
-        type: "Image",
-        url,
-      })) ?? [],
+    to: audience.to,
+    cc: audience.cc,
+    attachment: buildListingAttachments(input),
   };
 }
 
@@ -105,13 +106,15 @@ export function createActivity(params: {
   object: Record<string, unknown> | string;
   id: string;
 }): ActivityPubActivity {
+  const audience = defaultAudience();
+
   return {
     "@context": [ACTIVITY_STREAMS_CONTEXT],
     id: `${baseUrl()}/ap/activities/${params.id}`,
     type: params.type,
     actor: listingsActorId(),
-    to: ["https://www.w3.org/ns/activitystreams#Public"],
-    cc: [`${listingsActorId()}/followers`],
+    to: audience.to,
+    cc: audience.cc,
     published: new Date().toISOString(),
     object: params.object,
   };
@@ -459,4 +462,72 @@ function escapeHtml(value: string) {
     .replaceAll("<", "&lt;")
     .replaceAll(">", "&gt;")
     .replaceAll('"', "&quot;");
+}
+
+function defaultAudience() {
+  return {
+    to: ["https://www.w3.org/ns/activitystreams#Public"],
+    cc: [`${listingsActorId()}/followers`],
+  };
+}
+
+function buildListingAttachments(input: {
+  imageAttachments?: Array<{ url: string; mediaType?: string | null }>;
+  imageUrls?: string[];
+}) {
+  const source =
+    input.imageAttachments?.map((attachment) => ({
+      url: attachment.url,
+      mediaType: attachment.mediaType ?? null,
+    })) ??
+    input.imageUrls?.map((url) => ({
+      url,
+      mediaType: null,
+    })) ??
+    [];
+
+  return source.map((attachment) => ({
+    type: "Image",
+    url: attachment.url,
+    mediaType: normalizeImageMediaType(attachment.mediaType, attachment.url),
+  }));
+}
+
+function normalizeImageMediaType(mediaType: string | null, url: string) {
+  if (!mediaType || mediaType === "image/*") {
+    return inferMediaTypeFromUrl(url);
+  }
+
+  if (mediaType === "image/jpg") {
+    return "image/jpeg";
+  }
+
+  if (mediaType.startsWith("image/")) {
+    return mediaType;
+  }
+
+  return inferMediaTypeFromUrl(url);
+}
+
+function inferMediaTypeFromUrl(url: string) {
+  const pathname = getPathname(url).toLowerCase();
+  if (pathname.endsWith(".png")) {
+    return "image/png";
+  }
+  if (pathname.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (pathname.endsWith(".jpg") || pathname.endsWith(".jpeg")) {
+    return "image/jpeg";
+  }
+
+  return "image/jpeg";
+}
+
+function getPathname(url: string) {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return url.split("?")[0] ?? url;
+  }
 }
