@@ -216,7 +216,7 @@ export function signFederatedRequest(params: {
   const date = new Date().toUTCString();
   const host = params.url.host;
   const digestHeader = digest(params.body);
-  const headersToSign = ["(request-target)", "host", "date", "digest"];
+  const headersToSign = ["(request-target)", "host", "date", "digest", "content-type"];
 
   const reqData = {
     method: params.method,
@@ -225,6 +225,7 @@ export function signFederatedRequest(params: {
       host,
       date,
       digest: digestHeader,
+      "content-type": "application/activity+json",
     },
   };
 
