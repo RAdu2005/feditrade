@@ -13,18 +13,19 @@ type SentOffer = {
 
 type Props = {
   listingId: string;
+  listingCurrency: string | null;
   sentOffers: SentOffer[];
 };
 
-export function ListingOfferForm({ listingId, sentOffers }: Props) {
+export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Props) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState("");
   const [unitCode, setUnitCode] = useState("");
   const [amount, setAmount] = useState("");
-  const [currency, setCurrency] = useState("EUR");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const enforcedCurrency = listingCurrency?.trim().toUpperCase() ?? "";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -44,7 +45,7 @@ export function ListingOfferForm({ listingId, sentOffers }: Props) {
         quantity: quantity ? (Number.isFinite(parsedQuantity) ? parsedQuantity : null) : null,
         unitCode: unitCode.trim() || null,
         amount: amount ? (Number.isFinite(parsedAmount) ? parsedAmount : null) : null,
-        currency: currency.trim().toUpperCase() || null,
+        currency: enforcedCurrency || null,
       }),
     });
 
@@ -118,15 +119,16 @@ export function ListingOfferForm({ listingId, sentOffers }: Props) {
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium" htmlFor="listing-offer-currency">
-              Currency (optional)
+              Currency (fixed by listing)
             </label>
             <input
               id="listing-offer-currency"
-              value={currency}
-              onChange={(event) => setCurrency(event.target.value)}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              value={enforcedCurrency}
+              readOnly
+              disabled
+              className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
               maxLength={3}
-              placeholder="EUR"
+              placeholder="N/A"
             />
           </div>
         </div>

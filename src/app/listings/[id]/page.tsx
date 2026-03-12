@@ -94,6 +94,7 @@ export default async function ListingDetailsPage({ params }: Params) {
         {canSendOffer ? (
           <ListingOfferForm
             listingId={listing.id}
+            listingCurrency={listing.priceCurrency}
             sentOffers={sentOffers.map((offer) => ({
               id: offer.id,
               status: offer.status,

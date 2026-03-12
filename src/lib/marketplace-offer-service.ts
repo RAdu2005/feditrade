@@ -5,6 +5,11 @@ import {
   createMarketplaceConfirmationDocument,
 } from "@/lib/activitypub-marketplace";
 import { enqueueActivityDelivery } from "@/lib/delivery-queue";
+import {
+  applyInboundAcceptToOutboundOffer,
+  applyInboundConfirmationToOutboundOffer,
+  applyInboundRejectToOutboundOffer,
+} from "@/lib/marketplace-outbound-offer-service";
 import { prisma } from "@/lib/prisma";
 
 type RemoteTarget = {
@@ -25,6 +30,14 @@ function normalizeOfferReference(activityId: string) {
     type: "Offer",
     actor: listingsActorId(),
   };
+}
+
+function normalizeUri(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function isLocalListingsActor(actorId: string) {
+  return normalizeUri(actorId) === normalizeUri(listingsActorId());
 }
 
 export async function recordInboundMarketplaceOffer(params: {
@@ -309,6 +322,10 @@ export async function acceptMarketplaceOffer(offerId: string, userId: string) {
     activity: acceptActivity,
   });
 
+  if (isLocalListingsActor(offer.remoteActorId)) {
+    await applyInboundAcceptToOutboundOffer(acceptActivity);
+  }
+
   for (const competingOffer of competingOffers) {
     const rejectActivity = createActivity({
       id: crypto.randomUUID(),
@@ -331,6 +348,10 @@ export async function acceptMarketplaceOffer(offerId: string, userId: string) {
       offerId: competingOffer.id,
       activity: rejectActivity,
     });
+
+    if (isLocalListingsActor(competingOffer.remoteActorId)) {
+      await applyInboundRejectToOutboundOffer(rejectActivity);
+    }
   }
 
   return {
@@ -381,6 +402,10 @@ export async function rejectMarketplaceOffer(offerId: string, userId: string, re
     offerId: offer.id,
     activity: rejectActivity,
   });
+
+  if (isLocalListingsActor(offer.remoteActorId)) {
+    await applyInboundRejectToOutboundOffer(rejectActivity);
+  }
 
   return {
     offer: updatedOffer,
@@ -522,6 +547,10 @@ export async function completeMarketplaceAgreement(agreementId: string, userId: 
       },
     ],
   });
+
+  if (isLocalListingsActor(agreement.offer.remoteActorId)) {
+    await applyInboundConfirmationToOutboundOffer(confirmationActivity);
+  }
 
   return {
     agreement: updatedAgreement,
