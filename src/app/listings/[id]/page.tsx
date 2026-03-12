@@ -49,6 +49,21 @@ export default async function ListingDetailsPage({ params }: Params) {
           </div>
           {listing.location ? <p className="mt-1">Location: {listing.location}</p> : null}
           {listing.category ? <p className="mt-1">Category: {listing.category}</p> : null}
+          <p className="mt-1">Purpose: {listing.proposalPurpose}</p>
+          {listing.availableQuantity ? (
+            <p className="mt-1">
+              Quantity: {listing.availableQuantity}
+              {listing.unitCode ? ` ${listing.unitCode}` : ""}
+            </p>
+          ) : null}
+          {listing.proposalUrl ? (
+            <p className="mt-1">
+              Proposal:{" "}
+              <a className="underline" href={listing.proposalUrl} target="_blank" rel="noreferrer">
+                {listing.proposalUrl}
+              </a>
+            </p>
+          ) : null}
         </div>
 
         {canManage ? (

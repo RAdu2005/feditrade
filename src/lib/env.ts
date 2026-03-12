@@ -15,6 +15,10 @@ const envSchema = z.object({
   AP_PRIVATE_KEY_PEM: z.string().min(1),
   AP_PUBLIC_KEY_PEM: z.string().min(1),
   AP_FEDERATION_TARGETS: z.string().optional().default(""),
+  AP_ENABLE_LEGACY_NOTES: z.enum(["true", "false"]).optional().default("true"),
+  AP_ENABLE_FEP_MARKETPLACE: z.enum(["true", "false"]).optional().default("false"),
+  AP_FEP_CAPABLE_INSTANCES: z.string().optional().default(""),
+  AP_MARKETPLACE_ACTOR_MODE: z.enum(["shared", "per-user"]).optional().default("shared"),
   ADMIN_ACTOR_URIS: z.string().optional().default(""),
   S3_REGION: z.string().default("us-east-1"),
   S3_ENDPOINT: z.string().url(),
@@ -47,6 +51,11 @@ function splitCsv(value: string): string[] {
 export const env = {
   ...parsed.data,
   AP_FEDERATION_TARGETS: splitCsv(parsed.data.AP_FEDERATION_TARGETS),
+  AP_FEP_CAPABLE_INSTANCES: splitCsv(parsed.data.AP_FEP_CAPABLE_INSTANCES).map((domain) =>
+    domain.toLowerCase(),
+  ),
+  AP_ENABLE_LEGACY_NOTES: parsed.data.AP_ENABLE_LEGACY_NOTES === "true",
+  AP_ENABLE_FEP_MARKETPLACE: parsed.data.AP_ENABLE_FEP_MARKETPLACE === "true",
   ADMIN_ACTOR_URIS: splitCsv(parsed.data.ADMIN_ACTOR_URIS),
   AUTH_TRUST_HOST: parsed.data.AUTH_TRUST_HOST === "true",
   ALLOW_LOCAL_UPLOAD_FALLBACK: parsed.data.ALLOW_LOCAL_UPLOAD_FALLBACK === "true",

@@ -22,6 +22,12 @@ type ListingDraft = {
   priceCurrency?: string | null;
   location?: string | null;
   category?: string | null;
+  proposalPurpose?: "offer" | "request";
+  availableQuantity?: string | null;
+  minimumQuantity?: string | null;
+  unitCode?: string | null;
+  resourceConformsTo?: string | null;
+  validUntil?: string | null;
   imageKeys?: string[];
   imageUrls?: string[];
 };
@@ -37,6 +43,12 @@ type FormField =
   | "description"
   | "priceAmount"
   | "priceCurrency"
+  | "proposalPurpose"
+  | "availableQuantity"
+  | "minimumQuantity"
+  | "unitCode"
+  | "resourceConformsTo"
+  | "validUntil"
   | "locationCountry"
   | "locationCity"
   | "categorySelection"
@@ -178,6 +190,12 @@ function parseServerErrors(details: unknown): FormErrors {
   if (read("description")) fieldErrors.description = read("description");
   if (read("priceAmount")) fieldErrors.priceAmount = read("priceAmount");
   if (read("priceCurrency")) fieldErrors.priceCurrency = read("priceCurrency");
+  if (read("proposalPurpose")) fieldErrors.proposalPurpose = read("proposalPurpose");
+  if (read("availableQuantity")) fieldErrors.availableQuantity = read("availableQuantity");
+  if (read("minimumQuantity")) fieldErrors.minimumQuantity = read("minimumQuantity");
+  if (read("unitCode")) fieldErrors.unitCode = read("unitCode");
+  if (read("resourceConformsTo")) fieldErrors.resourceConformsTo = read("resourceConformsTo");
+  if (read("validUntil")) fieldErrors.validUntil = read("validUntil");
   if (locationError) {
     fieldErrors.locationCountry = locationError;
     fieldErrors.locationCity = locationError;
@@ -201,6 +219,14 @@ export function ListingForm({ mode, listingId, initial }: Props) {
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceAmount, setPriceAmount] = useState(initial?.priceAmount ?? "");
   const [priceCurrency, setPriceCurrency] = useState(initial?.priceCurrency ?? defaultCurrency);
+  const [proposalPurpose, setProposalPurpose] = useState<"offer" | "request">(
+    initial?.proposalPurpose ?? "offer",
+  );
+  const [availableQuantity, setAvailableQuantity] = useState(initial?.availableQuantity ?? "");
+  const [minimumQuantity, setMinimumQuantity] = useState(initial?.minimumQuantity ?? "");
+  const [unitCode, setUnitCode] = useState(initial?.unitCode ?? "");
+  const [resourceConformsTo, setResourceConformsTo] = useState(initial?.resourceConformsTo ?? "");
+  const [validUntil, setValidUntil] = useState(initial?.validUntil ? initial.validUntil.slice(0, 10) : "");
   const [locationCountry, setLocationCountry] = useState(initialLocation.countryCode);
   const [locationCity, setLocationCity] = useState(initialLocation.city);
   const [categorySelection, setCategorySelection] = useState(initialCategory.selected);
@@ -285,6 +311,8 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     const normalizedTitle = title.trim();
     const normalizedDescription = description.trim();
     const parsedPrice = Number(priceAmount);
+    const parsedAvailableQuantity = Number(availableQuantity);
+    const parsedMinimumQuantity = Number(minimumQuantity);
     const normalizedCity = locationCity.trim();
     const selectedCountryName = locationCountry
       ? COUNTRY_OPTION_BY_CODE.get(locationCountry)?.name ?? null
@@ -298,6 +326,8 @@ export function ListingForm({ mode, listingId, initial }: Props) {
       categorySelection === OTHER_CATEGORY
         ? normalizedCustomCategory || null
         : categorySelection || null;
+    const normalizedUnitCode = unitCode.trim().toUpperCase();
+    const normalizedResourceConformsTo = resourceConformsTo.trim();
 
     const nextFieldErrors: FormErrors = {};
     if (!normalizedTitle) nextFieldErrors.title = "Title is required.";
@@ -320,6 +350,24 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     if (categorySelection === OTHER_CATEGORY && !normalizedCustomCategory) {
       nextFieldErrors.customCategory = "Custom category is required.";
     }
+    if (availableQuantity && (!Number.isFinite(parsedAvailableQuantity) || parsedAvailableQuantity <= 0)) {
+      nextFieldErrors.availableQuantity = "Available quantity must be greater than 0.";
+    }
+    if (minimumQuantity && (!Number.isFinite(parsedMinimumQuantity) || parsedMinimumQuantity <= 0)) {
+      nextFieldErrors.minimumQuantity = "Minimum quantity must be greater than 0.";
+    }
+    if (
+      availableQuantity &&
+      minimumQuantity &&
+      Number.isFinite(parsedAvailableQuantity) &&
+      Number.isFinite(parsedMinimumQuantity) &&
+      parsedMinimumQuantity > parsedAvailableQuantity
+    ) {
+      nextFieldErrors.minimumQuantity = "Minimum quantity cannot be greater than available quantity.";
+    }
+    if (validUntil && Number.isNaN(new Date(validUntil).valueOf())) {
+      nextFieldErrors.validUntil = "Enter a valid end date.";
+    }
     if (mode === "create" && imageKeys.length === 0) {
       nextFieldErrors.imageKeys = "At least one image is required.";
     }
@@ -337,6 +385,14 @@ export function ListingForm({ mode, listingId, initial }: Props) {
       priceCurrency: priceCurrency || null,
       location,
       category,
+      proposalPurpose,
+      availableQuantity:
+        availableQuantity && Number.isFinite(parsedAvailableQuantity) ? parsedAvailableQuantity : null,
+      minimumQuantity:
+        minimumQuantity && Number.isFinite(parsedMinimumQuantity) ? parsedMinimumQuantity : null,
+      unitCode: normalizedUnitCode || null,
+      resourceConformsTo: normalizedResourceConformsTo || null,
+      validUntil: validUntil ? new Date(`${validUntil}T23:59:59.000Z`).toISOString() : null,
       imageKeys,
     };
 
@@ -548,6 +604,119 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             ) : null}
           </div>
         ) : null}
+      </div>
+
+      <div className="rounded border border-slate-200 bg-slate-50 p-4">
+        <p className="text-sm font-semibold">Marketplace Protocol Fields (Optional)</p>
+        <p className="mt-1 text-xs text-slate-600">
+          Used for canonical FEP-0837 proposal serialization.
+        </p>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="proposalPurpose">
+              Proposal purpose
+            </label>
+            <select
+              id="proposalPurpose"
+              value={proposalPurpose}
+              onChange={(event) => setProposalPurpose(event.target.value as "offer" | "request")}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            >
+              <option value="offer">Offer</option>
+              <option value="request">Request</option>
+            </select>
+            {fieldErrors.proposalPurpose ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.proposalPurpose}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="unitCode">
+              Unit code
+            </label>
+            <input
+              id="unitCode"
+              value={unitCode}
+              onChange={(event) => setUnitCode(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              placeholder="EA, HUR, KGM..."
+              maxLength={30}
+            />
+            {fieldErrors.unitCode ? <p className="mt-1 text-xs text-red-600">{fieldErrors.unitCode}</p> : null}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="availableQuantity">
+              Available quantity
+            </label>
+            <input
+              id="availableQuantity"
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={availableQuantity}
+              onChange={(event) => setAvailableQuantity(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            />
+            {fieldErrors.availableQuantity ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.availableQuantity}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="minimumQuantity">
+              Minimum quantity
+            </label>
+            <input
+              id="minimumQuantity"
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={minimumQuantity}
+              onChange={(event) => setMinimumQuantity(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            />
+            {fieldErrors.minimumQuantity ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.minimumQuantity}</p>
+            ) : null}
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="resourceConformsTo">
+              Resource conforms to
+            </label>
+            <input
+              id="resourceConformsTo"
+              type="url"
+              value={resourceConformsTo}
+              onChange={(event) => setResourceConformsTo(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              placeholder="https://schema.org/Product"
+            />
+            {fieldErrors.resourceConformsTo ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.resourceConformsTo}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="validUntil">
+              Valid until
+            </label>
+            <input
+              id="validUntil"
+              type="date"
+              value={validUntil}
+              onChange={(event) => setValidUntil(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+            />
+            {fieldErrors.validUntil ? <p className="mt-1 text-xs text-red-600">{fieldErrors.validUntil}</p> : null}
+          </div>
+        </div>
       </div>
 
       {mode === "edit" ? (

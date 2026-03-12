@@ -34,6 +34,12 @@ export default async function EditListingPage({ params }: Params) {
             priceCurrency: listing.priceCurrency,
             location: listing.location,
             category: listing.category,
+            proposalPurpose: listing.proposalPurpose === "request" ? "request" : "offer",
+            availableQuantity: listing.availableQuantity,
+            minimumQuantity: listing.minimumQuantity,
+            unitCode: listing.unitCode,
+            resourceConformsTo: listing.resourceConformsTo,
+            validUntil: listing.validUntil,
             imageKeys: listing.images.map((image) => image.key),
             imageUrls: listing.images.map((image) => image.url),
           }}

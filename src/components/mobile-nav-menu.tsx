@@ -86,6 +86,24 @@ export function MobileNavMenu({ user }: Props) {
                 Create listing
               </Link>
             ) : null}
+            {user ? (
+              <Link
+                href="/offers"
+                onClick={() => setOpenForPath(null)}
+                className="rounded px-2 py-1 hover:bg-slate-100"
+              >
+                Offers
+              </Link>
+            ) : null}
+            {user ? (
+              <Link
+                href="/agreements"
+                onClick={() => setOpenForPath(null)}
+                className="rounded px-2 py-1 hover:bg-slate-100"
+              >
+                Agreements
+              </Link>
+            ) : null}
             {user?.role === "ADMIN" ? (
               <Link
                 href="/admin"

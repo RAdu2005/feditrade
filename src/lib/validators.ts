@@ -22,6 +22,13 @@ export const listingCreateSchema = z.object({
   location: z.string().trim().min(2).max(160),
   category: z.string().trim().min(2).max(60),
   imageKeys: z.array(z.string().min(1)).min(1).max(6),
+  proposalPurpose: z.enum(["offer", "request"]).optional(),
+  availableQuantity: z.number().positive().max(1_000_000).optional(),
+  minimumQuantity: z.number().positive().max(1_000_000).optional(),
+  unitCode: z.string().trim().min(1).max(30).nullable().optional(),
+  resourceConformsTo: z.string().trim().url().nullable().optional(),
+  validFrom: z.string().datetime().nullable().optional(),
+  validUntil: z.string().datetime().nullable().optional(),
 });
 
 export const listingUpdateSchema = z
@@ -33,6 +40,13 @@ export const listingUpdateSchema = z
     location: z.string().trim().min(2).max(160).nullable().optional(),
     category: z.string().trim().min(2).max(60).nullable().optional(),
     imageKeys: z.array(z.string().min(1)).max(6).optional(),
+    proposalPurpose: z.enum(["offer", "request"]).optional(),
+    availableQuantity: z.number().positive().max(1_000_000).nullable().optional(),
+    minimumQuantity: z.number().positive().max(1_000_000).nullable().optional(),
+    unitCode: z.string().trim().min(1).max(30).nullable().optional(),
+    resourceConformsTo: z.string().trim().url().nullable().optional(),
+    validFrom: z.string().datetime().nullable().optional(),
+    validUntil: z.string().datetime().nullable().optional(),
   })
   .extend({
   status: z.enum(["ACTIVE", "SOLD", "REMOVED"]).optional(),
