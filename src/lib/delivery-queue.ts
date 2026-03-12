@@ -1,6 +1,6 @@
 import { FederationProjectionType, Prisma } from "@prisma/client";
-import { env } from "@/lib/env";
-import { prisma } from "@/lib/prisma";
+import { env } from "./env";
+import { prisma } from "./prisma";
 
 type DeliveryTarget = {
   actor: string | null;
