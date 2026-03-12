@@ -14,6 +14,7 @@ export async function SiteNav() {
         <nav className="hidden items-center gap-3 text-sm sm:flex">
           <Link href="/">Listings</Link>
           {user ? <Link href="/listings/new">Create listing</Link> : null}
+          {user ? <Link href="/offers/sent">Offers</Link> : null}
           {user ? <Link href="/agreements">Agreements</Link> : null}
           {user?.role === "ADMIN" ? <Link href="/admin">Admin</Link> : null}
           {user ? (

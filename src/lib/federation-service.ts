@@ -304,6 +304,65 @@ function toAgreementRecord(value: unknown) {
   return value as Record<string, unknown>;
 }
 
+function decimalToNumber(value: { toString(): string } | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toPositiveNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function extractOfferQuantity(agreementJson: Record<string, unknown>) {
+  const resourceQuantity = asRecord(agreementJson.resourceQuantity);
+  const quantity = resourceQuantity ? toPositiveNumber(resourceQuantity.hasNumericalValue) : null;
+  return quantity ?? 1;
+}
+
+function extractIsoCurrency(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const urnMatch = cleaned.match(/:([A-Z]{3})$/);
+  return urnMatch ? urnMatch[1] : null;
+}
+
+function extractOfferCurrency(agreementJson: Record<string, unknown>) {
+  const reciprocal = asRecord(agreementJson.reciprocal);
+  if (!reciprocal) {
+    return null;
+  }
+
+  const reciprocalResourceQuantity = asRecord(reciprocal.resourceQuantity);
+  return (
+    extractIsoCurrency(reciprocalResourceQuantity?.hasUnit) ??
+    extractIsoCurrency(reciprocal.hasUnit) ??
+    extractIsoCurrency(reciprocal.resourceConformsTo) ??
+    null
+  );
+}
+
 export async function persistInboundActivity(params: {
   activity: ActivityPayload;
   signatureValid: boolean;
@@ -376,6 +435,51 @@ async function processInboundOffer(activity: ActivityPayload) {
       inbox: remoteInboxes.inbox,
       offerActivityId: activityId,
       reason: "Unknown proposal target",
+    });
+    return;
+  }
+
+  if (offer.status !== "RECEIVED") {
+    return;
+  }
+
+  const offeredQuantity = extractOfferQuantity(agreementJson);
+  const minimumQuantity =
+    decimalToNumber(offer.proposal.minimumQuantity) ??
+    decimalToNumber(offer.proposal.listing.minimumQuantity);
+  const availableQuantity =
+    decimalToNumber(offer.proposal.availableQuantity) ??
+    decimalToNumber(offer.proposal.listing.availableQuantity);
+  const listingCurrency = offer.proposal.listing.priceCurrency?.toUpperCase() ?? null;
+  const offeredCurrency = extractOfferCurrency(agreementJson);
+
+  let validationError: string | null = null;
+  if (minimumQuantity !== null && offeredQuantity < minimumQuantity) {
+    validationError = `Offer quantity cannot be lower than minimum quantity (${minimumQuantity})`;
+  } else if (availableQuantity !== null && offeredQuantity > availableQuantity) {
+    validationError = `Offer quantity cannot exceed available quantity (${availableQuantity})`;
+  } else if (listingCurrency && !offeredCurrency) {
+    validationError = `Offer currency is required and must be ${listingCurrency}`;
+  } else if (listingCurrency && offeredCurrency !== listingCurrency) {
+    validationError = `Offer currency must match listing currency (${listingCurrency})`;
+  }
+
+  if (validationError) {
+    await sendRejectOffer({
+      actor: activity.actor,
+      inbox: remoteInboxes.inbox,
+      offerActivityId: activityId,
+      reason: validationError,
+    });
+
+    await prisma.marketplaceOffer.update({
+      where: {
+        id: offer.id,
+      },
+      data: {
+        status: "REJECTED",
+        respondedAt: new Date(),
+      },
     });
     return;
   }

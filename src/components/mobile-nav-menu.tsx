@@ -88,6 +88,15 @@ export function MobileNavMenu({ user }: Props) {
             ) : null}
             {user ? (
               <Link
+                href="/offers/sent"
+                onClick={() => setOpenForPath(null)}
+                className="rounded px-2 py-1 hover:bg-slate-100"
+              >
+                Offers
+              </Link>
+            ) : null}
+            {user ? (
+              <Link
                 href="/agreements"
                 onClick={() => setOpenForPath(null)}
                 className="rounded px-2 py-1 hover:bg-slate-100"

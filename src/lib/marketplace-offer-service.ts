@@ -120,6 +120,26 @@ export async function listMarketplaceOffersForUser(userId: string) {
   });
 }
 
+export async function listMarketplaceOffersForUserAndListing(userId: string, listingId: string) {
+  return prisma.marketplaceOffer.findMany({
+    where: {
+      proposal: {
+        listing: {
+          ownerId: userId,
+          id: listingId,
+        },
+      },
+    },
+    include: {
+      agreement: true,
+    },
+    orderBy: {
+      receivedAt: "desc",
+    },
+    take: 20,
+  });
+}
+
 export async function getMarketplaceOfferForUser(offerId: string, userId: string) {
   const offer = await prisma.marketplaceOffer.findUnique({
     where: {
@@ -194,6 +214,10 @@ export async function acceptMarketplaceOffer(offerId: string, userId: string) {
     };
   }
 
+  if (offer.proposal.listing.status !== "ACTIVE") {
+    throw new Error("Listing is no longer active");
+  }
+
   const now = new Date();
   const agreementId = crypto.randomUUID();
   const agreementActivityPubId = agreementObjectId(agreementId);
@@ -231,6 +255,30 @@ export async function acceptMarketplaceOffer(offerId: string, userId: string) {
     },
   });
 
+  const competingOffers = await prisma.marketplaceOffer.findMany({
+    where: {
+      proposalId: offer.proposalId,
+      status: "RECEIVED",
+      NOT: {
+        id: offer.id,
+      },
+    },
+  });
+
+  if (competingOffers.length > 0) {
+    await prisma.marketplaceOffer.updateMany({
+      where: {
+        id: {
+          in: competingOffers.map((candidate) => candidate.id),
+        },
+      },
+      data: {
+        status: MarketplaceOfferStatus.REJECTED,
+        respondedAt: now,
+      },
+    });
+  }
+
   const agreementObject = createMarketplaceAgreementObject({
     id: agreement.activityPubId,
     proposalId: offer.proposal.activityPubId,
@@ -260,6 +308,30 @@ export async function acceptMarketplaceOffer(offerId: string, userId: string) {
     agreementId: agreement.id,
     activity: acceptActivity,
   });
+
+  for (const competingOffer of competingOffers) {
+    const rejectActivity = createActivity({
+      id: crypto.randomUUID(),
+      type: "Reject",
+      to: [competingOffer.remoteActorId],
+      cc: [],
+      object: normalizeOfferReference(competingOffer.activityId),
+      result: {
+        reason: "Another offer was accepted for this proposal",
+      },
+    });
+
+    await enqueueOfferResponse({
+      target: {
+        actor: competingOffer.remoteActorId,
+        inbox: competingOffer.remoteInbox,
+      },
+      listingId: offer.proposal.listingId,
+      proposalId: offer.proposalId,
+      offerId: competingOffer.id,
+      activity: rejectActivity,
+    });
+  }
 
   return {
     offer: updatedOffer,

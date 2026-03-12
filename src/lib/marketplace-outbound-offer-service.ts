@@ -120,6 +120,15 @@ function normalizeActorFromUnknown(value: unknown) {
   return null;
 }
 
+function decimalToNumber(value: { toString(): string } | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 async function fetchActorDocument(actorUrl: string) {
   const response = await fetch(actorUrl, {
     headers: {
@@ -304,18 +313,49 @@ export async function sendOutboundMarketplaceOfferForListing(
     return null;
   }
 
+  if (listing.status !== "ACTIVE" || listing.proposal.status !== "PUBLISHED") {
+    throw new Error("Listing is not accepting new offers");
+  }
+
   if (listing.owner.id === userId) {
     throw new Error("You cannot send an offer on your own listing");
+  }
+
+  const offeredQuantity = input.quantity ?? 1;
+  const minimumQuantity = decimalToNumber(listing.minimumQuantity);
+  const availableQuantity = decimalToNumber(listing.availableQuantity);
+  const listingCurrency = listing.priceCurrency?.toUpperCase() ?? null;
+  const offeredCurrency = input.currency?.toUpperCase() ?? null;
+
+  if (offeredQuantity <= 0) {
+    throw new Error("Offer quantity must be greater than zero");
+  }
+
+  if (minimumQuantity !== null && offeredQuantity < minimumQuantity) {
+    throw new Error(`Offer quantity cannot be lower than minimum quantity (${minimumQuantity})`);
+  }
+
+  if (availableQuantity !== null && offeredQuantity > availableQuantity) {
+    throw new Error(`Offer quantity cannot exceed available quantity (${availableQuantity})`);
+  }
+
+  if (listingCurrency) {
+    if (!offeredCurrency) {
+      throw new Error(`Offer currency is required and must be ${listingCurrency}`);
+    }
+    if (offeredCurrency !== listingCurrency) {
+      throw new Error(`Offer currency must match listing currency (${listingCurrency})`);
+    }
   }
 
   return sendOutboundMarketplaceOffer(userId, {
     targetProposalId: listing.proposal.activityPubId,
     targetActorId: listing.owner.mastodonActorUri,
     note: input.note,
-    quantity: input.quantity,
+    quantity: offeredQuantity,
     unitCode: input.unitCode,
     amount: input.amount,
-    currency: input.currency,
+    currency: offeredCurrency,
     localListingId: listing.id,
   });
 }

@@ -4,8 +4,10 @@ import { auth } from "@/auth";
 import { DeleteListingButton } from "@/components/delete-listing-button";
 import { ListingOfferForm } from "@/components/listing-offer-form";
 import { ListingImageGallery } from "@/components/listing-image-gallery";
+import { ListingReceivedOffersPanel } from "@/components/listing-received-offers-panel";
 import { getListingById } from "@/lib/listing-service";
 import { listOutboundMarketplaceOffersForUserAndListing } from "@/lib/marketplace-outbound-offer-service";
+import { listMarketplaceOffersForUserAndListing } from "@/lib/marketplace-offer-service";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -19,9 +21,13 @@ export default async function ListingDetailsPage({ params }: Params) {
   }
 
   const canManage = session?.user?.mastodonActorUri === listing.owner.actorUri;
-  const canSendOffer = !!session?.user?.id && !canManage && !!listing.proposalUrl;
+  const canSendOffer =
+    !!session?.user?.id && !canManage && !!listing.proposalUrl && listing.status === "ACTIVE";
   const sentOffers = canSendOffer
     ? await listOutboundMarketplaceOffersForUserAndListing(session.user.id, listing.id)
+    : [];
+  const receivedOffers = canManage && session?.user?.id
+    ? await listMarketplaceOffersForUserAndListing(session.user.id, listing.id)
     : [];
 
   return (
@@ -55,6 +61,7 @@ export default async function ListingDetailsPage({ params }: Params) {
           </div>
           {listing.location ? <p className="mt-1">Location: {listing.location}</p> : null}
           {listing.category ? <p className="mt-1">Category: {listing.category}</p> : null}
+          <p className="mt-1">Status: {listing.status}</p>
           <p className="mt-1">Purpose: {listing.proposalPurpose}</p>
           {listing.availableQuantity ? (
             <p className="mt-1">
@@ -91,6 +98,19 @@ export default async function ListingDetailsPage({ params }: Params) {
               id: offer.id,
               status: offer.status,
               sentAt: offer.sentAt.toISOString(),
+            }))}
+          />
+        ) : null}
+
+        {canManage ? (
+          <ListingReceivedOffersPanel
+            listingStatus={listing.status}
+            offers={receivedOffers.map((offer) => ({
+              id: offer.id,
+              remoteActorId: offer.remoteActorId,
+              status: offer.status,
+              receivedAt: offer.receivedAt.toISOString(),
+              agreementId: offer.agreement?.id ?? null,
             }))}
           />
         ) : null}

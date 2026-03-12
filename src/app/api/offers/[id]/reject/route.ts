@@ -17,10 +17,14 @@ export async function POST(request: Request, context: Params) {
 
   const payload = (await request.json().catch(() => ({}))) as { reason?: string };
   const { id } = await context.params;
-  const result = await rejectMarketplaceOffer(id, user.id, payload.reason);
-  if (!result) {
-    return jsonError("Offer not found", 404);
-  }
+  try {
+    const result = await rejectMarketplaceOffer(id, user.id, payload.reason);
+    if (!result) {
+      return jsonError("Offer not found", 404);
+    }
 
-  return jsonOk(result);
+    return jsonOk(result);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Failed to reject offer", 400);
+  }
 }

@@ -16,10 +16,14 @@ export async function POST(_: Request, context: Params) {
   }
 
   const { id } = await context.params;
-  const result = await acceptMarketplaceOffer(id, user.id);
-  if (!result) {
-    return jsonError("Offer not found", 404);
-  }
+  try {
+    const result = await acceptMarketplaceOffer(id, user.id);
+    if (!result) {
+      return jsonError("Offer not found", 404);
+    }
 
-  return jsonOk(result);
+    return jsonOk(result);
+  } catch (error) {
+    return jsonError(error instanceof Error ? error.message : "Failed to accept offer", 400);
+  }
 }
