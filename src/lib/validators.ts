@@ -14,7 +14,14 @@ const currencyCodeSchema = z
     message: "Unsupported currency code",
   });
 
-export const listingCreateSchema = z.object({
+const futureDateTimeSchema = z.string().datetime().refine((value) => {
+  const parsed = new Date(value);
+  return Number.isFinite(parsed.valueOf()) && parsed.getTime() > Date.now();
+}, {
+  message: "Date must be in the future",
+});
+
+const requiredListingFieldsSchema = z.object({
   title: z.string().trim().min(3).max(120),
   description: z.string().trim().min(10).max(5000),
   priceAmount: z.number().positive().max(1_000_000),
@@ -22,33 +29,26 @@ export const listingCreateSchema = z.object({
   location: z.string().trim().min(2).max(160),
   category: z.string().trim().min(2).max(60),
   imageKeys: z.array(z.string().min(1)).min(1).max(6),
-  proposalPurpose: z.enum(["offer", "request"]).optional(),
-  availableQuantity: z.number().positive().max(1_000_000).optional(),
-  minimumQuantity: z.number().positive().max(1_000_000).optional(),
-  unitCode: z.string().trim().min(1).max(30).nullable().optional(),
-  resourceConformsTo: z.string().trim().url().nullable().optional(),
+  proposalPurpose: z.enum(["offer", "request"]),
+  availableQuantity: z.number().positive().max(1_000_000),
+  minimumQuantity: z.number().positive().max(1_000_000),
+  unitCode: z.string().trim().min(1).max(30),
+  resourceConformsTo: z.string().trim().url(),
   validFrom: z.string().datetime().nullable().optional(),
-  validUntil: z.string().datetime().nullable().optional(),
+  validUntil: futureDateTimeSchema,
+}).superRefine((value, context) => {
+  if (value.minimumQuantity > value.availableQuantity) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["minimumQuantity"],
+      message: "Minimum quantity cannot be greater than available quantity",
+    });
+  }
 });
 
-export const listingUpdateSchema = z
-  .object({
-    title: z.string().trim().min(3).max(120).optional(),
-    description: z.string().trim().min(10).max(5000).optional(),
-    priceAmount: z.number().positive().max(1_000_000).nullable().optional(),
-    priceCurrency: currencyCodeSchema.nullable().optional(),
-    location: z.string().trim().min(2).max(160).nullable().optional(),
-    category: z.string().trim().min(2).max(60).nullable().optional(),
-    imageKeys: z.array(z.string().min(1)).max(6).optional(),
-    proposalPurpose: z.enum(["offer", "request"]).optional(),
-    availableQuantity: z.number().positive().max(1_000_000).nullable().optional(),
-    minimumQuantity: z.number().positive().max(1_000_000).nullable().optional(),
-    unitCode: z.string().trim().min(1).max(30).nullable().optional(),
-    resourceConformsTo: z.string().trim().url().nullable().optional(),
-    validFrom: z.string().datetime().nullable().optional(),
-    validUntil: z.string().datetime().nullable().optional(),
-  })
-  .extend({
+export const listingCreateSchema = requiredListingFieldsSchema;
+
+export const listingUpdateSchema = requiredListingFieldsSchema.extend({
   status: z.enum(["ACTIVE", "SOLD", "REMOVED"]).optional(),
 });
 

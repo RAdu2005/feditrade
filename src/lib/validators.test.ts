@@ -5,6 +5,8 @@ import {
 } from "@/lib/validators";
 
 describe("validators", () => {
+  const futureValidUntil = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+
   it("accepts valid listing payload", () => {
     const parsed = listingCreateSchema.safeParse({
       title: "MacBook Pro",
@@ -14,6 +16,12 @@ describe("validators", () => {
       location: "Helsinki, Finland",
       category: "Electronics & Appliances",
       imageKeys: ["listings/2026-01-01/sample.jpg"],
+      proposalPurpose: "offer",
+      availableQuantity: 2,
+      minimumQuantity: 1,
+      unitCode: "EA",
+      resourceConformsTo: "https://schema.org/Product",
+      validUntil: futureValidUntil,
     });
 
     expect(parsed.success).toBe(true);
@@ -28,6 +36,12 @@ describe("validators", () => {
       location: "Helsinki, Finland",
       category: "Electronics & Appliances",
       imageKeys: ["listings/2026-01-01/sample.jpg"],
+      proposalPurpose: "offer",
+      availableQuantity: 2,
+      minimumQuantity: 1,
+      unitCode: "EA",
+      resourceConformsTo: "https://schema.org/Product",
+      validUntil: futureValidUntil,
     });
 
     expect(parsed.success).toBe(false);
@@ -57,5 +71,25 @@ describe("validators", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+
+  it("rejects listing payload with past validUntil", () => {
+    const parsed = listingCreateSchema.safeParse({
+      title: "MacBook Pro",
+      description: "Used laptop in good condition",
+      priceAmount: 850,
+      priceCurrency: "EUR",
+      location: "Helsinki, Finland",
+      category: "Electronics & Appliances",
+      imageKeys: ["listings/2026-01-01/sample.jpg"],
+      proposalPurpose: "offer",
+      availableQuantity: 2,
+      minimumQuantity: 1,
+      unitCode: "EA",
+      resourceConformsTo: "https://schema.org/Product",
+      validUntil: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });
