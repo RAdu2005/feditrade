@@ -3,6 +3,20 @@ import { redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-helpers";
 import { listOutboundMarketplaceOffersForUser } from "@/lib/marketplace-outbound-offer-service";
 
+function extractRejectReason(responseJson: unknown) {
+  if (!responseJson || typeof responseJson !== "object" || Array.isArray(responseJson)) {
+    return null;
+  }
+
+  const result = (responseJson as Record<string, unknown>).result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return null;
+  }
+
+  const reason = (result as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.trim().length > 0 ? reason : null;
+}
+
 export default async function SentOffersPage() {
   const user = await requireUser();
   if (!user) {
@@ -32,6 +46,23 @@ export default async function SentOffersPage() {
               </div>
               <p className="mt-2 text-xs text-slate-600">Target actor: {offer.targetActorId}</p>
               <p className="mt-1 text-xs text-slate-600">Sent: {offer.sentAt.toISOString()}</p>
+              {offer.respondedAt ? (
+                <p className="mt-1 text-xs text-slate-600">Responded: {offer.respondedAt.toISOString()}</p>
+              ) : (
+                <p className="mt-1 text-xs text-amber-700">Awaiting response from seller</p>
+              )}
+              {offer.status === "REJECTED" ? (
+                <p className="mt-1 text-xs text-red-700">
+                  Reason: {extractRejectReason(offer.responseJson) ?? "No reason provided"}
+                </p>
+              ) : null}
+              {offer.agreement ? (
+                <p className="mt-1 text-xs">
+                  <Link className="underline" href={`/agreements/buyer/${offer.agreement.id}`}>
+                    Open accepted agreement
+                  </Link>
+                </p>
+              ) : null}
               <div className="mt-3">
                 <Link className="text-xs font-medium underline" href={`/offers/sent/${offer.id}`}>
                   View details

@@ -405,6 +405,51 @@ export async function getOutboundMarketplaceOfferForUser(offerId: string, userId
   });
 }
 
+export async function listOutboundMarketplaceAgreementsForUser(userId: string) {
+  return prisma.marketplaceOutboundAgreement.findMany({
+    where: {
+      outboundOffer: {
+        localUserId: userId,
+      },
+    },
+    include: {
+      outboundOffer: {
+        select: {
+          id: true,
+          targetProposalId: true,
+          targetActorId: true,
+          status: true,
+          sentAt: true,
+        },
+      },
+      confirmations: true,
+    },
+    orderBy: [
+      {
+        acceptedAt: "desc",
+      },
+      {
+        createdAt: "desc",
+      },
+    ],
+  });
+}
+
+export async function getOutboundMarketplaceAgreementForUser(agreementId: string, userId: string) {
+  return prisma.marketplaceOutboundAgreement.findFirst({
+    where: {
+      id: agreementId,
+      outboundOffer: {
+        localUserId: userId,
+      },
+    },
+    include: {
+      outboundOffer: true,
+      confirmations: true,
+    },
+  });
+}
+
 export async function applyInboundAcceptToOutboundOffer(activity: InboundActivityPayload) {
   const offerActivityId = extractOfferActivityId(activity.object);
   if (!offerActivityId) {

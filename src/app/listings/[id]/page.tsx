@@ -98,6 +98,7 @@ export default async function ListingDetailsPage({ params }: Params) {
               id: offer.id,
               status: offer.status,
               sentAt: offer.sentAt.toISOString(),
+              respondedAt: offer.respondedAt?.toISOString() ?? null,
             }))}
           />
         ) : null}

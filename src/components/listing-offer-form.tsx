@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
 
@@ -7,6 +8,7 @@ type SentOffer = {
   id: string;
   status: string;
   sentAt: string;
+  respondedAt?: string | null;
 };
 
 type Props = {
@@ -157,8 +159,14 @@ export function ListingOfferForm({ listingId, sentOffers }: Props) {
           <h3 className="text-xs font-semibold">Your latest offers for this listing</h3>
           <ul className="mt-2 space-y-1 text-xs text-slate-700">
             {sentOffers.map((offer) => (
-              <li key={offer.id}>
-                {offer.status} - {new Date(offer.sentAt).toLocaleString()}
+              <li key={offer.id} className="flex flex-wrap items-center gap-2">
+                <span>
+                  {offer.status} - {new Date(offer.sentAt).toLocaleString()}
+                  {offer.respondedAt ? ` (responded ${new Date(offer.respondedAt).toLocaleString()})` : ""}
+                </span>
+                <Link className="underline" href={`/offers/sent/${offer.id}`}>
+                  details
+                </Link>
               </li>
             ))}
           </ul>

@@ -1,6 +1,21 @@
+import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { requireUser } from "@/lib/auth-helpers";
 import { getOutboundMarketplaceOfferForUser } from "@/lib/marketplace-outbound-offer-service";
+
+function extractRejectReason(responseJson: unknown) {
+  if (!responseJson || typeof responseJson !== "object" || Array.isArray(responseJson)) {
+    return null;
+  }
+
+  const result = (responseJson as Record<string, unknown>).result;
+  if (!result || typeof result !== "object" || Array.isArray(result)) {
+    return null;
+  }
+
+  const reason = (result as Record<string, unknown>).reason;
+  return typeof reason === "string" && reason.trim().length > 0 ? reason : null;
+}
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -26,6 +41,16 @@ export default async function SentOfferDetailsPage({ params }: Params) {
         <p className="mt-1 text-xs text-slate-600">Target actor: {offer.targetActorId}</p>
         <p className="mt-1 text-xs text-slate-600">Status: {offer.status}</p>
         <p className="mt-1 text-xs text-slate-600">Activity: {offer.activityId}</p>
+        {offer.respondedAt ? (
+          <p className="mt-1 text-xs text-slate-600">Responded: {offer.respondedAt.toISOString()}</p>
+        ) : (
+          <p className="mt-1 text-xs text-amber-700">Awaiting seller response</p>
+        )}
+        {offer.status === "REJECTED" ? (
+          <p className="mt-1 text-xs text-red-700">
+            Reason: {extractRejectReason(offer.responseJson) ?? "No reason provided"}
+          </p>
+        ) : null}
 
         <h2 className="mt-6 text-sm font-semibold">Sent Agreement Payload</h2>
         <pre className="mt-2 overflow-x-auto rounded bg-slate-950 p-3 text-xs text-slate-100">
@@ -37,6 +62,11 @@ export default async function SentOfferDetailsPage({ params }: Params) {
             <h2 className="mt-6 text-sm font-semibold">Accepted Agreement</h2>
             <p className="mt-1 text-xs text-slate-600">Agreement ID: {offer.agreement.agreementId}</p>
             <p className="mt-1 text-xs text-slate-600">Status: {offer.agreement.status}</p>
+            <p className="mt-1 text-xs">
+              <Link className="underline" href={`/agreements/buyer/${offer.agreement.id}`}>
+                Open buyer agreement view
+              </Link>
+            </p>
             <pre className="mt-2 overflow-x-auto rounded bg-slate-950 p-3 text-xs text-slate-100">
               {JSON.stringify(offer.agreement.agreementJson, null, 2)}
             </pre>
