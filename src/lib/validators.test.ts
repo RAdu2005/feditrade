@@ -27,6 +27,46 @@ describe("validators", () => {
     expect(parsed.success).toBe(true);
   });
 
+  it("accepts request listing payload without images", () => {
+    const parsed = listingCreateSchema.safeParse({
+      title: "Looking for office chair",
+      description: "Need an ergonomic chair in good condition",
+      priceAmount: 120,
+      priceCurrency: "EUR",
+      location: "Helsinki, Finland",
+      category: "Home & Garden",
+      imageKeys: [],
+      proposalPurpose: "request",
+      availableQuantity: 1,
+      minimumQuantity: 1,
+      unitCode: "EA",
+      resourceConformsTo: "https://schema.org/Product",
+      validUntil: futureValidUntil,
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects offer listing payload without images", () => {
+    const parsed = listingCreateSchema.safeParse({
+      title: "MacBook Pro",
+      description: "Used laptop in good condition",
+      priceAmount: 850,
+      priceCurrency: "EUR",
+      location: "Helsinki, Finland",
+      category: "Electronics & Appliances",
+      imageKeys: [],
+      proposalPurpose: "offer",
+      availableQuantity: 2,
+      minimumQuantity: 1,
+      unitCode: "EA",
+      resourceConformsTo: "https://schema.org/Product",
+      validUntil: futureValidUntil,
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
   it("rejects non-circulating or unsupported currency", () => {
     const parsed = listingCreateSchema.safeParse({
       title: "MacBook Pro",

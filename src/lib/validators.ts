@@ -28,7 +28,7 @@ const requiredListingFieldsSchema = z.object({
   priceCurrency: currencyCodeSchema,
   location: z.string().trim().min(2).max(160),
   category: z.string().trim().min(2).max(60),
-  imageKeys: z.array(z.string().min(1)).min(1).max(6),
+  imageKeys: z.array(z.string().min(1)).max(6),
   proposalPurpose: z.enum(["offer", "request"]),
   availableQuantity: z.number().positive().max(1_000_000),
   minimumQuantity: z.number().positive().max(1_000_000),
@@ -42,6 +42,14 @@ const requiredListingFieldsSchema = z.object({
       code: z.ZodIssueCode.custom,
       path: ["minimumQuantity"],
       message: "Minimum quantity cannot be greater than available quantity",
+    });
+  }
+
+  if (value.proposalPurpose === "offer" && value.imageKeys.length === 0) {
+    context.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["imageKeys"],
+      message: "At least one image is required for selling listings",
     });
   }
 });

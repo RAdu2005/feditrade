@@ -471,8 +471,8 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     } else if (!isFutureEndOfDayDate(validUntil)) {
       nextFieldErrors.validUntil = "Valid until must be in the future.";
     }
-    if (imageKeys.length === 0) {
-      nextFieldErrors.imageKeys = "At least one image is required.";
+    if (proposalPurpose === "offer" && imageKeys.length === 0) {
+      nextFieldErrors.imageKeys = "At least one image is required for selling listings.";
     }
 
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -715,7 +715,13 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             <select
               id="proposalPurpose"
               value={proposalPurpose}
-              onChange={(event) => setProposalPurpose(event.target.value as "offer" | "request")}
+              onChange={(event) => {
+                const nextPurpose = event.target.value as "offer" | "request";
+                setProposalPurpose(nextPurpose);
+                if (nextPurpose === "request") {
+                  setFieldErrors((prev) => ({ ...prev, imageKeys: undefined }));
+                }
+              }}
               className="w-full rounded border border-slate-300 px-3 py-2"
               required
             >
@@ -849,7 +855,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
 
       <div>
         <label className="mb-2 block text-sm font-medium" htmlFor="imageUpload">
-          Images
+          {proposalPurpose === "offer" ? "Images" : "Images (optional for buying listings)"}
         </label>
         <input
           ref={imageInputRef}
