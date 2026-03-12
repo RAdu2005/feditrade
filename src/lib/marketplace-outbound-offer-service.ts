@@ -21,10 +21,10 @@ type OutboundOfferInput = {
 
 type ListingOfferInput = {
   note?: string | null;
-  quantity?: number | null;
-  unitCode?: string | null;
-  amount?: number | null;
-  currency?: string | null;
+  quantity: number;
+  unitCode: string;
+  amount: number;
+  currency: string;
 };
 
 type InboundActivityPayload = {
@@ -321,9 +321,12 @@ export async function sendOutboundMarketplaceOfferForListing(
     throw new Error("You cannot send an offer on your own listing");
   }
 
-  const offeredQuantity = input.quantity ?? 1;
+  const offeredQuantity = input.quantity;
   const minimumQuantity = decimalToNumber(listing.minimumQuantity);
   const availableQuantity = decimalToNumber(listing.availableQuantity);
+  const listingUnitCode = listing.unitCode?.toUpperCase() ?? null;
+  const offeredUnitCode = input.unitCode?.toUpperCase() ?? null;
+  const offeredAmount = input.amount;
   const listingCurrency = listing.priceCurrency?.toUpperCase() ?? null;
   const offeredCurrency = input.currency?.toUpperCase() ?? null;
 
@@ -337,6 +340,19 @@ export async function sendOutboundMarketplaceOfferForListing(
 
   if (availableQuantity !== null && offeredQuantity > availableQuantity) {
     throw new Error(`Offer quantity cannot exceed available quantity (${availableQuantity})`);
+  }
+
+  if (!Number.isFinite(offeredAmount) || offeredAmount <= 0) {
+    throw new Error("Offer amount must be greater than zero");
+  }
+
+  if (listingUnitCode) {
+    if (!offeredUnitCode) {
+      throw new Error(`Offer unit code is required and must be ${listingUnitCode}`);
+    }
+    if (offeredUnitCode !== listingUnitCode) {
+      throw new Error(`Offer unit code must match listing unit code (${listingUnitCode})`);
+    }
   }
 
   if (listingCurrency) {
@@ -353,8 +369,8 @@ export async function sendOutboundMarketplaceOfferForListing(
     targetActorId: listing.owner.mastodonActorUri,
     note: input.note,
     quantity: offeredQuantity,
-    unitCode: input.unitCode,
-    amount: input.amount,
+    unitCode: offeredUnitCode,
+    amount: offeredAmount,
     currency: offeredCurrency,
     localListingId: listing.id,
   });

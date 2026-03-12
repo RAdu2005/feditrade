@@ -14,18 +14,19 @@ type SentOffer = {
 type Props = {
   listingId: string;
   listingCurrency: string | null;
+  listingUnitCode: string | null;
   sentOffers: SentOffer[];
 };
 
-export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Props) {
+export function ListingOfferForm({ listingId, listingCurrency, listingUnitCode, sentOffers }: Props) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState("");
-  const [unitCode, setUnitCode] = useState("");
   const [amount, setAmount] = useState("");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const enforcedCurrency = listingCurrency?.trim().toUpperCase() ?? "";
+  const enforcedUnitCode = listingUnitCode?.trim().toUpperCase() ?? "";
 
   async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -34,6 +35,26 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
 
     const parsedQuantity = Number(quantity);
     const parsedAmount = Number(amount);
+    if (!Number.isFinite(parsedQuantity) || parsedQuantity <= 0) {
+      setError("Quantity is required and must be greater than zero");
+      setSaving(false);
+      return;
+    }
+    if (!Number.isFinite(parsedAmount) || parsedAmount <= 0) {
+      setError("Amount is required and must be greater than zero");
+      setSaving(false);
+      return;
+    }
+    if (!enforcedCurrency) {
+      setError("Listing currency is missing");
+      setSaving(false);
+      return;
+    }
+    if (!enforcedUnitCode) {
+      setError("Listing unit code is missing");
+      setSaving(false);
+      return;
+    }
 
     const response = await fetch(`/api/listings/${listingId}/offers`, {
       method: "POST",
@@ -42,10 +63,10 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
       },
       body: JSON.stringify({
         note: note.trim() || null,
-        quantity: quantity ? (Number.isFinite(parsedQuantity) ? parsedQuantity : null) : null,
-        unitCode: unitCode.trim() || null,
-        amount: amount ? (Number.isFinite(parsedAmount) ? parsedAmount : null) : null,
-        currency: enforcedCurrency || null,
+        quantity: parsedQuantity,
+        unitCode: enforcedUnitCode,
+        amount: parsedAmount,
+        currency: enforcedCurrency,
       }),
     });
 
@@ -60,7 +81,6 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
     setSaving(false);
     setNote("");
     setQuantity("");
-    setUnitCode("");
     setAmount("");
     router.refresh();
   }
@@ -76,7 +96,7 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium" htmlFor="listing-offer-quantity">
-              Quantity (optional)
+              Quantity
             </label>
             <input
               id="listing-offer-quantity"
@@ -86,18 +106,19 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
               value={quantity}
               onChange={(event) => setQuantity(event.target.value)}
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              required
             />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium" htmlFor="listing-offer-unit">
-              Unit code (optional)
+              Unit code
             </label>
             <input
               id="listing-offer-unit"
-              value={unitCode}
-              onChange={(event) => setUnitCode(event.target.value)}
-              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
-              placeholder="EA"
+              value={enforcedUnitCode}
+              readOnly
+              disabled
+              className="w-full rounded border border-slate-300 bg-slate-100 px-3 py-2 text-sm text-slate-700"
             />
           </div>
         </div>
@@ -105,7 +126,7 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <label className="mb-1 block text-xs font-medium" htmlFor="listing-offer-amount">
-              Amount (optional)
+              Amount
             </label>
             <input
               id="listing-offer-amount"
@@ -115,11 +136,12 @@ export function ListingOfferForm({ listingId, listingCurrency, sentOffers }: Pro
               value={amount}
               onChange={(event) => setAmount(event.target.value)}
               className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              required
             />
           </div>
           <div>
             <label className="mb-1 block text-xs font-medium" htmlFor="listing-offer-currency">
-              Currency (fixed by listing)
+              Currency
             </label>
             <input
               id="listing-offer-currency"

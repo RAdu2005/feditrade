@@ -65,8 +65,8 @@ export const outboundMarketplaceOfferSchema = z.object({
 
 export const listingMarketplaceOfferSchema = z.object({
   note: z.string().trim().max(3000).optional().nullable(),
-  quantity: z.number().positive().max(1_000_000).optional().nullable(),
-  unitCode: z.string().trim().min(1).max(30).optional().nullable(),
-  amount: z.number().positive().max(1_000_000).optional().nullable(),
-  currency: currencyCodeSchema.optional().nullable(),
+  quantity: z.number().positive().max(1_000_000),
+  unitCode: z.string().trim().min(1).max(30),
+  amount: z.number().positive().max(1_000_000),
+  currency: currencyCodeSchema,
 });
