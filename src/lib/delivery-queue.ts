@@ -1,9 +1,27 @@
+import { FederationProjectionType, Prisma } from "@prisma/client";
 import { env } from "./env";
 import { prisma } from "./prisma";
-import { Prisma } from "@prisma/client";
+
+type DeliveryTarget = {
+  actor: string | null;
+  inbox: string;
+};
 
 function parseTargetSpec(spec: string) {
-  const [actor, inbox] = spec.split("|").map((part) => part?.trim());
+  const trimmed = spec.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!trimmed.includes("|")) {
+    // Backward compatibility: allow plain inbox URLs.
+    return {
+      actor: null,
+      inbox: trimmed,
+    };
+  }
+
+  const [actor, inbox] = trimmed.split("|").map((part) => part?.trim());
   if (!inbox) {
     return null;
   }
@@ -13,7 +31,42 @@ function parseTargetSpec(spec: string) {
   };
 }
 
-async function deliveryTargets() {
+function hostnameFromUrl(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    return new URL(value).hostname.toLowerCase();
+  } catch {
+    return null;
+  }
+}
+
+function dedupeTargets(targets: DeliveryTarget[]) {
+  const deduped = new Map<string, DeliveryTarget>();
+  for (const target of targets) {
+    if (!deduped.has(target.inbox)) {
+      deduped.set(target.inbox, target);
+    }
+  }
+
+  return [...deduped.values()];
+}
+
+function isMarketplaceCapableTarget(target: DeliveryTarget) {
+  if (env.AP_FEP_CAPABLE_INSTANCES.length === 0) {
+    return false;
+  }
+
+  const actorHost = hostnameFromUrl(target.actor);
+  const inboxHost = hostnameFromUrl(target.inbox);
+  return env.AP_FEP_CAPABLE_INSTANCES.some(
+    (domain) => actorHost === domain || inboxHost === domain,
+  );
+}
+
+async function allKnownTargets() {
   const followers = await prisma.federationFollower.findMany({
     select: {
       actor: true,
@@ -22,10 +75,7 @@ async function deliveryTargets() {
     },
   });
 
-  const staticTargets = env.AP_FEDERATION_TARGETS.map(parseTargetSpec).filter(Boolean) as {
-    actor: string | null;
-    inbox: string;
-  }[];
+  const staticTargets = env.AP_FEDERATION_TARGETS.map(parseTargetSpec).filter(Boolean) as DeliveryTarget[];
 
   const combined = [
     ...followers.map((follower) => ({
@@ -35,32 +85,55 @@ async function deliveryTargets() {
     ...staticTargets,
   ];
 
-  const deduped = new Map<string, { actor: string | null; inbox: string }>();
-  for (const target of combined) {
-    if (!deduped.has(target.inbox)) {
-      deduped.set(target.inbox, target);
-    }
+  return dedupeTargets(combined);
+}
+
+async function deliveryTargetsForProjection(projectionType: FederationProjectionType) {
+  const targets = await allKnownTargets();
+
+  if (projectionType === "LEGACY_NOTE") {
+    return targets;
   }
 
-  return [...deduped.values()];
+  if (projectionType === "MARKETPLACE_CANONICAL") {
+    return targets.filter(isMarketplaceCapableTarget);
+  }
+
+  return [];
 }
 
 export async function enqueueActivityDelivery(activity: {
   id: string;
   type: string;
   listingId: string;
+  proposalId?: string;
+  offerId?: string;
+  agreementId?: string;
+  projectionType?: FederationProjectionType;
   body: Record<string, unknown>;
+  targets?: DeliveryTarget[];
 }) {
+  const projectionType = activity.projectionType ?? "LEGACY_NOTE";
+
   await prisma.outboxActivity.create({
     data: {
       activityId: activity.id,
       activityType: activity.type,
+      projectionType,
       listingId: activity.listingId,
+      proposalId: activity.proposalId,
+      offerId: activity.offerId,
+      agreementId: activity.agreementId,
       activityJson: activity.body as Prisma.InputJsonValue,
     },
   });
 
-  const targets = await deliveryTargets();
+  const targets = dedupeTargets(
+    activity.targets && activity.targets.length > 0
+      ? activity.targets
+      : await deliveryTargetsForProjection(projectionType),
+  );
+
   if (targets.length === 0) {
     return 0;
   }
@@ -70,6 +143,7 @@ export async function enqueueActivityDelivery(activity: {
       targetActor: target.actor,
       targetInbox: target.inbox,
       activityId: activity.id,
+      projectionType,
       activityJson: activity.body as Prisma.InputJsonValue,
     })),
   });

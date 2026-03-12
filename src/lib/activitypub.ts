@@ -25,12 +25,14 @@ export type ActivityPubActor = {
 export type ActivityPubActivity = {
   "@context": string[];
   id: string;
-  type: "Create" | "Update" | "Delete";
+  type: "Create" | "Update" | "Delete" | "Offer" | "Accept" | "Reject";
   actor: string;
   to: string[];
   cc: string[];
   published: string;
   object: Record<string, unknown> | string;
+  result?: Record<string, unknown> | string;
+  inReplyTo?: string;
 };
 
 export function baseUrl() {
@@ -47,6 +49,14 @@ export function listingsKeyId() {
 
 export function listingObjectId(listingId: string) {
   return `${baseUrl()}/ap/objects/${listingId}`;
+}
+
+export function listingProposalObjectId(listingId: string) {
+  return `${baseUrl()}/ap/proposals/${listingId}`;
+}
+
+export function agreementObjectId(agreementId: string) {
+  return `${baseUrl()}/ap/agreements/${agreementId}`;
 }
 
 export function listingCanonicalUrl(listingId: string) {
@@ -77,6 +87,7 @@ export function createListingNote(input: {
   title: string;
   description: string;
   canonicalUrl: string;
+  proposalUrl?: string | null;
   ownerActorUri: string;
   ownerHandle?: string | null;
   priceAmount?: string | null;
@@ -99,26 +110,55 @@ export function createListingNote(input: {
     to: audience.to,
     cc: audience.cc,
     attachment: buildListingAttachments(input),
+    ...(input.proposalUrl
+      ? {
+          tag: [
+            {
+              type: "Link",
+              href: input.proposalUrl,
+              mediaType: "application/activity+json",
+              name: "Canonical marketplace proposal",
+            },
+          ],
+        }
+      : {}),
   };
 }
 
 export function createActivity(params: {
-  type: "Create" | "Update" | "Delete";
+  type: ActivityPubActivity["type"];
   object: Record<string, unknown> | string;
   id: string;
+  actor?: string;
+  to?: string[];
+  cc?: string[];
+  result?: Record<string, unknown> | string;
+  inReplyTo?: string;
+  context?: string[];
+  publishedAt?: string;
 }): ActivityPubActivity {
-  const audience = defaultAudience();
+  const audience = params.to ? { to: params.to, cc: params.cc ?? [] } : defaultAudience();
 
-  return {
-    "@context": [ACTIVITY_STREAMS_CONTEXT],
+  const activity: ActivityPubActivity = {
+    "@context": params.context ?? [ACTIVITY_STREAMS_CONTEXT],
     id: `${baseUrl()}/ap/activities/${params.id}`,
     type: params.type,
-    actor: listingsActorId(),
+    actor: params.actor ?? listingsActorId(),
     to: audience.to,
     cc: audience.cc,
-    published: new Date().toISOString(),
+    published: params.publishedAt ?? new Date().toISOString(),
     object: params.object,
   };
+
+  if (params.result !== undefined) {
+    activity.result = params.result;
+  }
+
+  if (params.inReplyTo !== undefined) {
+    activity.inReplyTo = params.inReplyTo;
+  }
+
+  return activity;
 }
 
 export function webfingerResource() {
@@ -388,6 +428,7 @@ function renderListingContent(input: {
   title: string;
   description: string;
   canonicalUrl: string;
+  proposalUrl?: string | null;
   ownerActorUri: string;
   ownerHandle?: string | null;
   priceAmount?: string | null;
@@ -407,6 +448,11 @@ function renderListingContent(input: {
       : []),
     ...(input.category ? [`<p>Category: ${escapeHtml(input.category)}</p>`] : []),
     ...(input.location ? [`<p>Location: ${escapeHtml(input.location)}</p>`] : []),
+    ...(input.proposalUrl
+      ? [
+          `<p>Marketplace proposal: <a href="${escapeHtml(input.proposalUrl)}">${escapeHtml(input.proposalUrl)}</a></p>`,
+        ]
+      : []),
     `<p><a href="${escapeHtml(input.canonicalUrl)}">${escapeHtml(input.canonicalUrl)}</a></p>`,
   ];
 
@@ -469,14 +515,14 @@ function escapeHtml(value: string) {
     .replaceAll('"', "&quot;");
 }
 
-function defaultAudience() {
+export function defaultAudience() {
   return {
     to: ["https://www.w3.org/ns/activitystreams#Public"],
     cc: [`${listingsActorId()}/followers`],
   };
 }
 
-function buildListingAttachments(input: {
+export function buildListingAttachments(input: {
   imageAttachments?: Array<{ url: string; mediaType?: string | null }>;
   imageUrls?: string[];
 }) {

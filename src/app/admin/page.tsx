@@ -8,7 +8,7 @@ export default async function AdminPage() {
     redirect("/");
   }
 
-  const [failedJobs, listings] = await Promise.all([
+  const [failedJobs, listings, offers, agreements, outboundOffers] = await Promise.all([
     prisma.federationDeliveryJob.findMany({
       where: { status: "DEAD_LETTER" },
       orderBy: { updatedAt: "desc" },
@@ -17,6 +17,42 @@ export default async function AdminPage() {
     prisma.listing.findMany({
       where: { status: "ACTIVE" },
       orderBy: { createdAt: "desc" },
+      take: 30,
+    }),
+    prisma.marketplaceOffer.findMany({
+      orderBy: { receivedAt: "desc" },
+      take: 30,
+      include: {
+        proposal: {
+          include: {
+            listing: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.marketplaceAgreement.findMany({
+      orderBy: { createdAt: "desc" },
+      take: 30,
+      include: {
+        proposal: {
+          include: {
+            listing: {
+              select: {
+                id: true,
+                title: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    prisma.marketplaceOutboundOffer.findMany({
+      orderBy: { sentAt: "desc" },
       take: 30,
     }),
   ]);
@@ -44,6 +80,57 @@ export default async function AdminPage() {
                     Retry
                   </button>
                 </form>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-lg font-semibold">Recent Marketplace Offers</h2>
+        {offers.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">No remote offers yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {offers.map((offer) => (
+              <li key={offer.id} className="rounded border border-slate-200 p-4">
+                <p className="text-sm font-medium">{offer.proposal.listing.title}</p>
+                <p className="mt-1 text-xs text-slate-600">Actor: {offer.remoteActorId}</p>
+                <p className="mt-1 text-xs text-slate-600">Status: {offer.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-lg font-semibold">Recent Marketplace Agreements</h2>
+        {agreements.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">No agreements yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {agreements.map((agreement) => (
+              <li key={agreement.id} className="rounded border border-slate-200 p-4">
+                <p className="text-sm font-medium">{agreement.proposal.listing.title}</p>
+                <p className="mt-1 text-xs text-slate-600">Buyer: {agreement.buyerActorId}</p>
+                <p className="mt-1 text-xs text-slate-600">Status: {agreement.status}</p>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-12">
+        <h2 className="text-lg font-semibold">Recent Outbound Marketplace Offers</h2>
+        {outboundOffers.length === 0 ? (
+          <p className="mt-3 text-sm text-slate-600">No outbound offers yet.</p>
+        ) : (
+          <ul className="mt-3 space-y-3">
+            {outboundOffers.map((offer) => (
+              <li key={offer.id} className="rounded border border-slate-200 p-4">
+                <p className="text-sm font-medium">{offer.targetProposalId}</p>
+                <p className="mt-1 text-xs text-slate-600">Target actor: {offer.targetActorId}</p>
+                <p className="mt-1 text-xs text-slate-600">Status: {offer.status}</p>
               </li>
             ))}
           </ul>

@@ -30,6 +30,54 @@ enum DeliveryJobStatus {
   DEAD_LETTER
 }
 
+enum FederationProjectionType {
+  LEGACY_NOTE
+  MARKETPLACE_CANONICAL
+  MARKETPLACE_RESPONSE
+  MARKETPLACE_CONFIRMATION
+}
+
+enum InboxWorkflowType {
+  SOCIAL
+  MARKETPLACE
+}
+
+enum MarketplaceProposalPurpose {
+  OFFER
+  REQUEST
+}
+
+enum MarketplaceProposalStatus {
+  DRAFT
+  PUBLISHED
+  PARTIALLY_FULFILLED
+  FULFILLED
+  WITHDRAWN
+  EXPIRED
+}
+
+enum MarketplaceOfferStatus {
+  RECEIVED
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
+enum MarketplaceAgreementStatus {
+  PROPOSED
+  ACCEPTED
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum MarketplaceOutboundOfferStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
 enum AdminActionType {
   TAKE_DOWN_LISTING
   RESTORE_LISTING
@@ -51,6 +99,7 @@ model User {
 
   listings Listing[]
   sessions Session[]
+  outboundOffers MarketplaceOutboundOffer[]
 
   @@unique([mastodonDomain, mastodonAccountId])
 }
@@ -101,6 +150,13 @@ model Listing {
   priceCurrency          String?
   location               String?
   category               String?
+  proposalPurpose        MarketplaceProposalPurpose @default(OFFER)
+  availableQuantity      Decimal?     @db.Decimal(14, 4)
+  minimumQuantity        Decimal?     @db.Decimal(14, 4)
+  unitCode               String?
+  resourceConformsTo     String?
+  validFrom              DateTime?
+  validUntil             DateTime?
   status                 ListingStatus @default(ACTIVE)
   canonicalUrl           String        @unique
   activityPubObjectId    String        @unique
@@ -110,10 +166,165 @@ model Listing {
 
   owner            User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   images           ListingImage[]
+  proposal         MarketplaceProposal?
+  outboundOffers   MarketplaceOutboundOffer[]
   outboxActivities OutboxActivity[]
 
   @@index([status, createdAt(sort: Desc), id])
   @@index([ownerId, createdAt(sort: Desc)])
+}
+
+model MarketplaceProposal {
+  id                  String                     @id @default(cuid())
+  listingId           String                     @unique
+  activityPubId       String                     @unique
+  actorId             String
+  purpose             MarketplaceProposalPurpose @default(OFFER)
+  status              MarketplaceProposalStatus  @default(PUBLISHED)
+  publishedIntentJson Json
+  reciprocalIntentJson Json?
+  unitBased           Boolean                    @default(false)
+  availableQuantity   Decimal?                   @db.Decimal(14, 4)
+  minimumQuantity     Decimal?                   @db.Decimal(14, 4)
+  unitCode            String?
+  resourceConformsTo  String?
+  validFrom           DateTime?
+  validUntil          DateTime?
+  lastAnnouncedAt     DateTime?
+  createdAt           DateTime                   @default(now())
+  updatedAt           DateTime                   @updatedAt
+
+  listing         Listing              @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  offers          MarketplaceOffer[]
+  agreements      MarketplaceAgreement[]
+  outboxActivities OutboxActivity[]
+}
+
+model MarketplaceOffer {
+  id              String               @id @default(cuid())
+  proposalId      String
+  activityId      String               @unique
+  remoteActorId   String
+  remoteInbox     String
+  agreementJson   Json
+  status          MarketplaceOfferStatus @default(RECEIVED)
+  receivedAt      DateTime             @default(now())
+  respondedAt     DateTime?
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+
+  proposal        MarketplaceProposal  @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  agreement       MarketplaceAgreement?
+  outboxActivities OutboxActivity[]
+
+  @@index([proposalId, receivedAt(sort: Desc)])
+}
+
+model MarketplaceAgreement {
+  id              String                   @id @default(cuid())
+  proposalId      String
+  offerId         String?                  @unique
+  activityPubId   String                   @unique
+  sellerActorId   String
+  buyerActorId    String
+  agreementJson   Json
+  status          MarketplaceAgreementStatus @default(ACCEPTED)
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  proposal         MarketplaceProposal     @relation(fields: [proposalId], references: [id], onDelete: Cascade)
+  offer            MarketplaceOffer?       @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  commitments      MarketplaceCommitment[]
+  confirmations    MarketplaceConfirmation[]
+  outboxActivities OutboxActivity[]
+
+  @@index([proposalId, createdAt(sort: Desc)])
+}
+
+model MarketplaceCommitment {
+  id             String              @id @default(cuid())
+  agreementId    String
+  kind           String
+  commitmentJson Json
+  status         String
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  agreement MarketplaceAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([agreementId, createdAt(sort: Desc)])
+}
+
+model MarketplaceConfirmation {
+  id          String   @id @default(cuid())
+  agreementId String
+  activityId  String   @unique
+  documentJson Json
+  publishedAt DateTime @default(now())
+  createdAt   DateTime @default(now())
+
+  agreement MarketplaceAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
+
+  @@index([agreementId, publishedAt(sort: Desc)])
+}
+
+model MarketplaceOutboundOffer {
+  id                 String                       @id @default(cuid())
+  localUserId        String
+  localListingId     String?
+  activityId         String                       @unique
+  actorId            String
+  targetProposalId   String
+  targetActorId      String
+  targetInbox        String
+  agreementJson      Json
+  status             MarketplaceOutboundOfferStatus @default(SENT)
+  responseActivityId String?
+  responseJson       Json?
+  sentAt             DateTime                     @default(now())
+  respondedAt        DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  localUser     User                            @relation(fields: [localUserId], references: [id], onDelete: Cascade)
+  localListing  Listing?                        @relation(fields: [localListingId], references: [id], onDelete: SetNull)
+  agreement     MarketplaceOutboundAgreement?
+  confirmations MarketplaceOutboundConfirmation[]
+
+  @@index([localUserId, sentAt(sort: Desc)])
+  @@index([localListingId, sentAt(sort: Desc)])
+}
+
+model MarketplaceOutboundAgreement {
+  id              String                   @id @default(cuid())
+  outboundOfferId String                   @unique
+  agreementId     String                   @unique
+  agreementJson   Json
+  status          MarketplaceAgreementStatus @default(ACCEPTED)
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  outboundOffer MarketplaceOutboundOffer @relation(fields: [outboundOfferId], references: [id], onDelete: Cascade)
+  confirmations MarketplaceOutboundConfirmation[]
+}
+
+model MarketplaceOutboundConfirmation {
+  id                  String   @id @default(cuid())
+  outboundOfferId     String
+  outboundAgreementId String?
+  activityId          String   @unique
+  documentJson        Json
+  publishedAt         DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  outboundOffer     MarketplaceOutboundOffer @relation(fields: [outboundOfferId], references: [id], onDelete: Cascade)
+  outboundAgreement MarketplaceOutboundAgreement? @relation(fields: [outboundAgreementId], references: [id], onDelete: SetNull)
+
+  @@index([outboundOfferId, publishedAt(sort: Desc)])
 }
 
 model ListingImage {
@@ -145,14 +356,22 @@ model OutboxActivity {
   id          String   @id @default(cuid())
   activityId  String   @unique
   activityType String
+  projectionType FederationProjectionType @default(LEGACY_NOTE)
   listingId   String
+  proposalId  String?
+  offerId     String?
+  agreementId String?
   activityJson Json
   publishedAt DateTime @default(now())
   createdAt   DateTime @default(now())
 
   listing Listing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+  proposal MarketplaceProposal? @relation(fields: [proposalId], references: [id], onDelete: SetNull)
+  offer MarketplaceOffer? @relation(fields: [offerId], references: [id], onDelete: SetNull)
+  agreement MarketplaceAgreement? @relation(fields: [agreementId], references: [id], onDelete: SetNull)
 
   @@index([publishedAt(sort: Desc)])
+  @@index([projectionType, publishedAt(sort: Desc)])
 }
 
 model FederationDeliveryJob {
@@ -160,6 +379,7 @@ model FederationDeliveryJob {
   targetActor   String?
   targetInbox   String
   activityId    String
+  projectionType FederationProjectionType @default(LEGACY_NOTE)
   activityJson  Json
   status        DeliveryJobStatus @default(PENDING)
   attemptCount  Int               @default(0)
@@ -178,6 +398,8 @@ model InboxActivityLog {
   activityId        String   @unique
   actor             String
   activityType      String
+  targetObjectId    String?
+  workflowType      InboxWorkflowType @default(SOCIAL)
   rawActivity       Json
   signatureValid    Boolean
   processed         Boolean  @default(false)
@@ -186,6 +408,7 @@ model InboxActivityLog {
 
   @@index([receivedAt(sort: Desc)])
   @@index([actor])
+  @@index([workflowType, receivedAt(sort: Desc)])
 }
 
 model AdminAction {

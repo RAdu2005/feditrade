@@ -22,6 +22,12 @@ type ListingDraft = {
   priceCurrency?: string | null;
   location?: string | null;
   category?: string | null;
+  proposalPurpose?: "offer" | "request";
+  availableQuantity?: string | null;
+  minimumQuantity?: string | null;
+  unitCode?: string | null;
+  resourceConformsTo?: string | null;
+  validUntil?: string | null;
   imageKeys?: string[];
   imageUrls?: string[];
 };
@@ -37,6 +43,12 @@ type FormField =
   | "description"
   | "priceAmount"
   | "priceCurrency"
+  | "proposalPurpose"
+  | "availableQuantity"
+  | "minimumQuantity"
+  | "unitCode"
+  | "resourceConformsTo"
+  | "validUntil"
   | "locationCountry"
   | "locationCity"
   | "categorySelection"
@@ -62,6 +74,51 @@ const PRESET_CATEGORIES = [
 const OTHER_CATEGORY = "Other";
 const maxImages = 6;
 
+const CATEGORY_PROTOCOL_DEFAULTS: Partial<
+  Record<(typeof PRESET_CATEGORIES)[number], { unitCode: string; resourceConformsTo: string }>
+> = {
+  "Cars & Bikes": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Vehicle",
+  },
+  Homes: {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Accommodation",
+  },
+  "Electronics & Appliances": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  "Fashion & Beauty": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  "Auto Parts": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  "Home & Garden": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  "Mother & Child": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  "Sports & Leisure": {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  Pets: {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+  Industrial: {
+    unitCode: "EA",
+    resourceConformsTo: "https://schema.org/Product",
+  },
+};
+
 type UploadedImage = {
   key: string;
   previewUrl: string;
@@ -86,6 +143,24 @@ function parseCategory(category: string | null | undefined) {
     selected: OTHER_CATEGORY,
     custom: category,
   };
+}
+
+function toDateInputValue(value: Date) {
+  const year = value.getUTCFullYear();
+  const month = String(value.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(value.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function defaultValidUntilInput() {
+  const date = new Date();
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  return toDateInputValue(date);
+}
+
+function isFutureEndOfDayDate(value: string) {
+  const parsed = new Date(`${value}T23:59:59.000Z`);
+  return Number.isFinite(parsed.valueOf()) && parsed.getTime() > Date.now();
 }
 
 function parseLocation(location: string | null | undefined) {
@@ -178,6 +253,12 @@ function parseServerErrors(details: unknown): FormErrors {
   if (read("description")) fieldErrors.description = read("description");
   if (read("priceAmount")) fieldErrors.priceAmount = read("priceAmount");
   if (read("priceCurrency")) fieldErrors.priceCurrency = read("priceCurrency");
+  if (read("proposalPurpose")) fieldErrors.proposalPurpose = read("proposalPurpose");
+  if (read("availableQuantity")) fieldErrors.availableQuantity = read("availableQuantity");
+  if (read("minimumQuantity")) fieldErrors.minimumQuantity = read("minimumQuantity");
+  if (read("unitCode")) fieldErrors.unitCode = read("unitCode");
+  if (read("resourceConformsTo")) fieldErrors.resourceConformsTo = read("resourceConformsTo");
+  if (read("validUntil")) fieldErrors.validUntil = read("validUntil");
   if (locationError) {
     fieldErrors.locationCountry = locationError;
     fieldErrors.locationCity = locationError;
@@ -193,14 +274,27 @@ function parseServerErrors(details: unknown): FormErrors {
 export function ListingForm({ mode, listingId, initial }: Props) {
   const router = useRouter();
   const imageInputRef = useRef<HTMLInputElement | null>(null);
+  const unitCodeManuallyEdited = useRef(Boolean(initial?.unitCode?.trim()));
+  const resourceConformsToManuallyEdited = useRef(Boolean(initial?.resourceConformsTo?.trim()));
   const initialLocation = parseLocation(initial?.location);
   const initialCategory = parseCategory(initial?.category);
   const defaultCurrency = PRIORITY_CURRENCY_CODES[0] ?? "EUR";
+  const todayDateInput = useMemo(() => toDateInputValue(new Date()), []);
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceAmount, setPriceAmount] = useState(initial?.priceAmount ?? "");
   const [priceCurrency, setPriceCurrency] = useState(initial?.priceCurrency ?? defaultCurrency);
+  const [proposalPurpose, setProposalPurpose] = useState<"offer" | "request">(
+    initial?.proposalPurpose ?? "offer",
+  );
+  const [availableQuantity, setAvailableQuantity] = useState(initial?.availableQuantity ?? "");
+  const [minimumQuantity, setMinimumQuantity] = useState(initial?.minimumQuantity ?? "");
+  const [unitCode, setUnitCode] = useState(initial?.unitCode ?? "");
+  const [resourceConformsTo, setResourceConformsTo] = useState(initial?.resourceConformsTo ?? "");
+  const [validUntil, setValidUntil] = useState(
+    initial?.validUntil ? initial.validUntil.slice(0, 10) : defaultValidUntilInput(),
+  );
   const [locationCountry, setLocationCountry] = useState(initialLocation.countryCode);
   const [locationCity, setLocationCity] = useState(initialLocation.city);
   const [categorySelection, setCategorySelection] = useState(initialCategory.selected);
@@ -246,6 +340,27 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     [locationCountry],
   );
 
+  function onCategorySelectionChange(nextCategory: string) {
+    setCategorySelection(nextCategory);
+
+    if (nextCategory === OTHER_CATEGORY || !nextCategory) {
+      return;
+    }
+
+    const defaults = CATEGORY_PROTOCOL_DEFAULTS[nextCategory as (typeof PRESET_CATEGORIES)[number]];
+    if (!defaults) {
+      return;
+    }
+
+    if (!unitCodeManuallyEdited.current) {
+      setUnitCode(defaults.unitCode);
+    }
+
+    if (!resourceConformsToManuallyEdited.current) {
+      setResourceConformsTo(defaults.resourceConformsTo);
+    }
+  }
+
   async function onFileChange(event: ChangeEvent<HTMLInputElement>) {
     const input = event.currentTarget;
     const file = input.files?.[0];
@@ -285,6 +400,8 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     const normalizedTitle = title.trim();
     const normalizedDescription = description.trim();
     const parsedPrice = Number(priceAmount);
+    const parsedAvailableQuantity = Number(availableQuantity);
+    const parsedMinimumQuantity = Number(minimumQuantity);
     const normalizedCity = locationCity.trim();
     const selectedCountryName = locationCountry
       ? COUNTRY_OPTION_BY_CODE.get(locationCountry)?.name ?? null
@@ -298,30 +415,64 @@ export function ListingForm({ mode, listingId, initial }: Props) {
       categorySelection === OTHER_CATEGORY
         ? normalizedCustomCategory || null
         : categorySelection || null;
+    const normalizedUnitCode = unitCode.trim().toUpperCase();
+    const normalizedResourceConformsTo = resourceConformsTo.trim();
 
     const nextFieldErrors: FormErrors = {};
     if (!normalizedTitle) nextFieldErrors.title = "Title is required.";
     if (!normalizedDescription) nextFieldErrors.description = "Description is required.";
-    if (mode === "create" && (!Number.isFinite(parsedPrice) || parsedPrice <= 0)) {
+    if (!Number.isFinite(parsedPrice) || parsedPrice <= 0) {
       nextFieldErrors.priceAmount = "Price must be greater than 0.";
     }
-    if (mode === "create" && !priceCurrency) {
+    if (!priceCurrency) {
       nextFieldErrors.priceCurrency = "Currency is required.";
     }
-    if (mode === "create" && !locationCountry) {
+    if (!locationCountry) {
       nextFieldErrors.locationCountry = "Country is required.";
     }
-    if (mode === "create" && !normalizedCity) {
+    if (!normalizedCity) {
       nextFieldErrors.locationCity = "City is required.";
     }
-    if (mode === "create" && !categorySelection) {
+    if (!categorySelection) {
       nextFieldErrors.categorySelection = "Category is required.";
     }
     if (categorySelection === OTHER_CATEGORY && !normalizedCustomCategory) {
       nextFieldErrors.customCategory = "Custom category is required.";
     }
-    if (mode === "create" && imageKeys.length === 0) {
-      nextFieldErrors.imageKeys = "At least one image is required.";
+    if (!availableQuantity || !Number.isFinite(parsedAvailableQuantity) || parsedAvailableQuantity <= 0) {
+      nextFieldErrors.availableQuantity = "Available quantity is required and must be greater than 0.";
+    }
+    if (!minimumQuantity || !Number.isFinite(parsedMinimumQuantity) || parsedMinimumQuantity <= 0) {
+      nextFieldErrors.minimumQuantity = "Minimum quantity is required and must be greater than 0.";
+    }
+    if (
+      availableQuantity &&
+      minimumQuantity &&
+      Number.isFinite(parsedAvailableQuantity) &&
+      Number.isFinite(parsedMinimumQuantity) &&
+      parsedMinimumQuantity > parsedAvailableQuantity
+    ) {
+      nextFieldErrors.minimumQuantity = "Minimum quantity cannot be greater than available quantity.";
+    }
+    if (!normalizedUnitCode) {
+      nextFieldErrors.unitCode = "Unit code is required.";
+    }
+    if (!normalizedResourceConformsTo) {
+      nextFieldErrors.resourceConformsTo = "Schema URI is required.";
+    } else {
+      try {
+        new URL(normalizedResourceConformsTo);
+      } catch {
+        nextFieldErrors.resourceConformsTo = "Enter a valid schema URI.";
+      }
+    }
+    if (!validUntil || Number.isNaN(new Date(validUntil).valueOf())) {
+      nextFieldErrors.validUntil = "Valid until is required.";
+    } else if (!isFutureEndOfDayDate(validUntil)) {
+      nextFieldErrors.validUntil = "Valid until must be in the future.";
+    }
+    if (proposalPurpose === "offer" && imageKeys.length === 0) {
+      nextFieldErrors.imageKeys = "At least one image is required for selling listings.";
     }
 
     if (Object.keys(nextFieldErrors).length > 0) {
@@ -333,10 +484,16 @@ export function ListingForm({ mode, listingId, initial }: Props) {
     const basePayload = {
       title: normalizedTitle,
       description: normalizedDescription,
-      priceAmount: Number.isFinite(parsedPrice) ? parsedPrice : null,
-      priceCurrency: priceCurrency || null,
+      priceAmount: parsedPrice,
+      priceCurrency,
       location,
       category,
+      proposalPurpose,
+      availableQuantity: parsedAvailableQuantity,
+      minimumQuantity: parsedMinimumQuantity,
+      unitCode: normalizedUnitCode,
+      resourceConformsTo: normalizedResourceConformsTo,
+      validUntil: new Date(`${validUntil}T23:59:59.000Z`).toISOString(),
       imageKeys,
     };
 
@@ -379,7 +536,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           value={title}
           onChange={(event) => setTitle(event.target.value)}
           className="w-full rounded border border-slate-300 px-3 py-2"
-          required={mode === "create"}
+          required
         />
         {fieldErrors.title ? <p className="mt-1 text-xs text-red-600">{fieldErrors.title}</p> : null}
       </div>
@@ -393,7 +550,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           value={description}
           onChange={(event) => setDescription(event.target.value)}
           className="min-h-32 w-full rounded border border-slate-300 px-3 py-2"
-          required={mode === "create"}
+          required
         />
         {fieldErrors.description ? (
           <p className="mt-1 text-xs text-red-600">{fieldErrors.description}</p>
@@ -413,7 +570,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             value={priceAmount}
             onChange={(event) => setPriceAmount(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-            required={mode === "create"}
+            required
           />
           {fieldErrors.priceAmount ? (
             <p className="mt-1 text-xs text-red-600">{fieldErrors.priceAmount}</p>
@@ -428,7 +585,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             value={priceCurrency ?? ""}
             onChange={(event) => setPriceCurrency(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-            required={mode === "create"}
+            required
           >
             {hasUnknownSelectedCurrency ? (
               <option value={priceCurrency ?? ""}>{priceCurrency} - Unknown (legacy)</option>
@@ -461,7 +618,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             value={locationCountry}
             onChange={(event) => setLocationCountry(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-            required={mode === "create"}
+            required
           >
             <option value="" disabled>
               Select country / territory
@@ -495,7 +652,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
             onChange={(event) => setLocationCity(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
             placeholder="City"
-            required={mode === "create"}
+            required
             maxLength={120}
           />
           {fieldErrors.locationCity ? (
@@ -512,9 +669,9 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           <select
             id="category"
             value={categorySelection}
-            onChange={(event) => setCategorySelection(event.target.value)}
+            onChange={(event) => onCategorySelectionChange(event.target.value)}
             className="w-full rounded border border-slate-300 px-3 py-2"
-            required={mode === "create"}
+            required
           >
             <option value="" disabled>
               Select category
@@ -541,7 +698,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
               className="w-full rounded border border-slate-300 px-3 py-2"
               placeholder="Enter custom category"
               maxLength={60}
-              required={mode === "create"}
+              required
             />
             {fieldErrors.customCategory ? (
               <p className="mt-1 text-xs text-red-600">{fieldErrors.customCategory}</p>
@@ -549,6 +706,134 @@ export function ListingForm({ mode, listingId, initial }: Props) {
           </div>
         ) : null}
       </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="proposalPurpose">
+              Proposal purpose
+            </label>
+            <select
+              id="proposalPurpose"
+              value={proposalPurpose}
+              onChange={(event) => {
+                const nextPurpose = event.target.value as "offer" | "request";
+                setProposalPurpose(nextPurpose);
+                if (nextPurpose === "request") {
+                  setFieldErrors((prev) => ({ ...prev, imageKeys: undefined }));
+                }
+              }}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              required
+            >
+              <option value="offer">Offer</option>
+              <option value="request">Request</option>
+            </select>
+            {fieldErrors.proposalPurpose ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.proposalPurpose}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="validUntil">
+              Valid until
+            </label>
+            <input
+              id="validUntil"
+              type="date"
+              min={todayDateInput}
+              value={validUntil}
+              onChange={(event) => setValidUntil(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              required
+            />
+            {fieldErrors.validUntil ? <p className="mt-1 text-xs text-red-600">{fieldErrors.validUntil}</p> : null}
+          </div>
+      </div>
+
+      <div className="grid gap-4 sm:grid-cols-2">
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="availableQuantity">
+              Available quantity
+            </label>
+            <input
+              id="availableQuantity"
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={availableQuantity}
+              onChange={(event) => setAvailableQuantity(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              required
+            />
+            {fieldErrors.availableQuantity ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.availableQuantity}</p>
+            ) : null}
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium" htmlFor="minimumQuantity">
+              Minimum quantity
+            </label>
+            <input
+              id="minimumQuantity"
+              type="number"
+              step="0.0001"
+              min="0.0001"
+              value={minimumQuantity}
+              onChange={(event) => setMinimumQuantity(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2"
+              required
+            />
+            {fieldErrors.minimumQuantity ? (
+              <p className="mt-1 text-xs text-red-600">{fieldErrors.minimumQuantity}</p>
+            ) : null}
+          </div>
+      </div>
+
+      <details className="mt-2">
+          <summary className="cursor-pointer text-sm font-medium">Advanced unit and schema fields</summary>
+          <div className="mt-3 grid gap-4 sm:grid-cols-2">
+            <div>
+              <label className="mb-1 block text-sm font-medium" htmlFor="unitCode">
+                Unit code
+              </label>
+              <input
+                id="unitCode"
+                value={unitCode}
+                onChange={(event) => {
+                  unitCodeManuallyEdited.current = true;
+                  setUnitCode(event.target.value);
+                }}
+                className="w-full rounded border border-slate-300 px-3 py-2"
+                placeholder="EA, HUR, KGM..."
+                maxLength={30}
+                required
+              />
+              {fieldErrors.unitCode ? <p className="mt-1 text-xs text-red-600">{fieldErrors.unitCode}</p> : null}
+            </div>
+
+            <div>
+              <label className="mb-1 block text-sm font-medium" htmlFor="resourceConformsTo">
+                Resource conforms to (schema URI)
+              </label>
+              <input
+                id="resourceConformsTo"
+                type="url"
+                value={resourceConformsTo}
+                onChange={(event) => {
+                  resourceConformsToManuallyEdited.current = true;
+                  setResourceConformsTo(event.target.value);
+                }}
+                className="w-full rounded border border-slate-300 px-3 py-2"
+                placeholder="https://schema.org/Product"
+                required
+              />
+              {fieldErrors.resourceConformsTo ? (
+                <p className="mt-1 text-xs text-red-600">{fieldErrors.resourceConformsTo}</p>
+              ) : null}
+            </div>
+          </div>
+      </details>
 
       {mode === "edit" ? (
         <div>
@@ -570,7 +855,7 @@ export function ListingForm({ mode, listingId, initial }: Props) {
 
       <div>
         <label className="mb-2 block text-sm font-medium" htmlFor="imageUpload">
-          Images
+          {proposalPurpose === "offer" ? "Images" : "Images (optional for buying listings)"}
         </label>
         <input
           ref={imageInputRef}

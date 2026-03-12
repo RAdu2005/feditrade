@@ -18,6 +18,7 @@ export async function GET(_: Request, context: Params) {
     title: listing.title,
     description: listing.description,
     canonicalUrl: listing.canonicalUrl,
+    proposalUrl: listing.proposal?.activityPubId,
     ownerActorUri: listing.owner.mastodonActorUri,
     ownerHandle: `@${listing.owner.mastodonUsername}@${listing.owner.mastodonDomain}`,
     priceAmount: listing.priceAmount?.toString(),

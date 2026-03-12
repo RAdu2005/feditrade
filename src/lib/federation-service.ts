@@ -2,11 +2,18 @@ import { createHash } from "node:crypto";
 import {
   ACTOR_FETCH_ACCEPT_HEADER,
   baseUrl,
+  createActivity,
   listingsActorId,
   signFederatedRequest,
 } from "@/lib/activitypub";
 import { env } from "@/lib/env";
 import { childLogger } from "@/lib/logger";
+import { recordInboundMarketplaceOffer } from "@/lib/marketplace-offer-service";
+import {
+  applyInboundAcceptToOutboundOffer,
+  applyInboundConfirmationToOutboundOffer,
+  applyInboundRejectToOutboundOffer,
+} from "@/lib/marketplace-outbound-offer-service";
 import { prisma } from "@/lib/prisma";
 
 type ActivityPayload = {
@@ -14,6 +21,7 @@ type ActivityPayload = {
   type?: string;
   actor?: string;
   object?: unknown;
+  result?: unknown;
   [key: string]: unknown;
 };
 
@@ -47,31 +55,14 @@ async function fetchActorInbox(actorUrl: string) {
   };
 }
 
-async function sendAcceptFollow(params: {
-  actor: string;
-  inbox: string;
-  sharedInbox?: string | null;
-  followActivity: ActivityPayload;
+async function sendSignedActivity(params: {
+  activity: Record<string, unknown>;
+  targets: string[];
 }) {
-  const acceptObject = buildAcceptObject(params.followActivity);
+  const body = JSON.stringify(params.activity);
+  const uniqueTargets = [...new Set(params.targets.filter(Boolean))];
 
-  const acceptActivity = {
-    "@context": ["https://www.w3.org/ns/activitystreams"],
-    id: `${baseUrl()}/ap/activities/${crypto.randomUUID()}`,
-    type: "Accept",
-    actor: listingsActorId(),
-    to: [params.actor],
-    object: acceptObject,
-    published: new Date().toISOString(),
-  };
-
-  const body = JSON.stringify(acceptActivity);
-
-  const targets = [...new Set([params.inbox, params.sharedInbox].filter(Boolean) as string[])];
-  const successes: string[] = [];
-  const failures: string[] = [];
-
-  for (const target of targets) {
+  for (const target of uniqueTargets) {
     const targetUrl = new URL(target);
     const signedHeaders = signFederatedRequest({
       method: "post",
@@ -88,33 +79,288 @@ async function sendAcceptFollow(params: {
       body,
     });
 
-    if (response.ok) {
-      successes.push(`${target} -> ${response.status}`);
-      continue;
+    if (!response.ok) {
+      const responseText = (await response.text()).slice(0, 300);
+      throw new Error(
+        `Failed to send activity to ${target}: ${response.status}${responseText ? ` (${responseText})` : ""}`,
+      );
     }
+  }
+}
 
-    const responseText = (await response.text()).slice(0, 300);
-    failures.push(
-      `${target} -> ${response.status}${responseText ? ` (${responseText.replace(/\s+/g, " ")})` : ""}`,
-    );
+async function sendAcceptFollow(params: {
+  actor: string;
+  inbox: string;
+  sharedInbox?: string | null;
+  followActivity: ActivityPayload;
+}) {
+  const acceptObject = buildFollowObjectForAccept(params.followActivity);
+
+  const acceptActivity = createActivity({
+    id: crypto.randomUUID(),
+    type: "Accept",
+    to: [params.actor],
+    cc: [],
+    object: acceptObject,
+  });
+
+  await sendSignedActivity({
+    activity: acceptActivity,
+    targets: [params.inbox, params.sharedInbox ?? ""],
+  });
+
+  logger.info(
+    {
+      followActor: params.actor,
+      followId: params.followActivity.id,
+    },
+    "Sent Accept for Follow",
+  );
+}
+
+async function sendRejectOffer(params: {
+  actor: string;
+  inbox: string;
+  offerActivityId: string;
+  reason: string;
+}) {
+  const rejectActivity = createActivity({
+    id: crypto.randomUUID(),
+    type: "Reject",
+    to: [params.actor],
+    cc: [],
+    object: {
+      id: params.offerActivityId,
+      type: "Offer",
+    },
+    result: {
+      reason: params.reason,
+    },
+  });
+
+  await sendSignedActivity({
+    activity: rejectActivity,
+    targets: [params.inbox],
+  });
+}
+
+function isAdminActor(actor: string) {
+  return env.ADMIN_ACTOR_URIS.includes(actor);
+}
+
+function normalizeUri(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function normalizeObjectId(value: unknown) {
+  if (typeof value === "string") {
+    return normalizeUri(value);
   }
 
-  if (successes.length > 0) {
-    logger.info(
-      {
-        followActor: params.actor,
-        followId: params.followActivity.id,
-        successTargets: successes,
-        failedTargets: failures,
-      },
-      "Sent Accept for Follow",
-    );
-    return;
+  if (value && typeof value === "object") {
+    const objectId = (value as { id?: unknown }).id;
+    if (typeof objectId === "string") {
+      return normalizeUri(objectId);
+    }
   }
 
-  if (failures.length > 0) {
-    throw new Error(`Failed to send Accept for Follow: ${failures.join("; ")}`);
+  return null;
+}
+
+function readObjectFieldAsId(source: unknown, field: string) {
+  if (!source || typeof source !== "object") {
+    return null;
   }
+
+  return normalizeObjectId((source as Record<string, unknown>)[field]);
+}
+
+function extractOfferTargetProposalId(value: unknown) {
+  const direct = normalizeObjectId(value);
+  if (direct?.includes("/ap/proposals/")) {
+    return direct;
+  }
+
+  const fromObject =
+    readObjectFieldAsId(value, "proposal") ??
+    readObjectFieldAsId(value, "object") ??
+    readObjectFieldAsId(value, "basedOn") ??
+    readObjectFieldAsId(value, "target") ??
+    readObjectFieldAsId(value, "inReplyTo");
+
+  if (fromObject?.includes("/ap/proposals/")) {
+    return fromObject;
+  }
+
+  return null;
+}
+
+function extractAgreementTargetId(value: unknown) {
+  const direct = normalizeObjectId(value);
+  if (direct?.includes("/ap/agreements/")) {
+    return direct;
+  }
+
+  const nested =
+    readObjectFieldAsId(value, "agreement") ??
+    readObjectFieldAsId(value, "about") ??
+    readObjectFieldAsId(value, "object") ??
+    readObjectFieldAsId(value, "id");
+
+  if (nested?.includes("/ap/agreements/")) {
+    return nested;
+  }
+
+  return null;
+}
+
+function extractUndoFollow(object: unknown) {
+  if (!object || typeof object !== "object") {
+    return null;
+  }
+
+  const undoObject = object as { type?: unknown; actor?: unknown; object?: unknown };
+  if (undoObject.type !== "Follow") {
+    return null;
+  }
+
+  return {
+    actor: typeof undoObject.actor === "string" ? undoObject.actor : null,
+    object: undoObject.object,
+  };
+}
+
+function isFollowTargetingListingsActor(object: unknown) {
+  const targetObjectId = normalizeObjectId(object);
+  return targetObjectId === normalizeUri(listingsActorId());
+}
+
+function buildFollowObjectForAccept(followActivity: ActivityPayload): Record<string, unknown> {
+  const hasValidFollowShape =
+    followActivity.type === "Follow" &&
+    typeof followActivity.actor === "string" &&
+    isFollowTargetingListingsActor(followActivity.object);
+
+  if (hasValidFollowShape) {
+    return { ...(followActivity as Record<string, unknown>) };
+  }
+
+  return {
+    id: followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
+    type: "Follow",
+    actor: followActivity.actor,
+    object: normalizeObjectId(followActivity.object) ?? listingsActorId(),
+  };
+}
+
+function resolvePersistedActivityId(activity: ActivityPayload) {
+  if (typeof activity.id === "string" && activity.id.trim().length > 0) {
+    return activity.id;
+  }
+
+  const fallbackSource = JSON.stringify({
+    actor: activity.actor,
+    type: activity.type,
+    object: activity.object ?? null,
+  });
+  const digest = createHash("sha256").update(fallbackSource).digest("hex");
+  return `urn:feditrade:inbox:${digest}`;
+}
+
+function isMarketplaceWorkflow(activity: ActivityPayload) {
+  if (!activity.type) {
+    return false;
+  }
+
+  const marketplaceTypes = new Set(["Offer", "Accept", "Reject"]);
+  if (marketplaceTypes.has(activity.type)) {
+    return true;
+  }
+
+  if (activity.type === "Create") {
+    const objectType =
+      typeof activity.object === "object" && activity.object
+        ? (activity.object as { type?: unknown }).type
+        : null;
+    return objectType === "Document";
+  }
+
+  return false;
+}
+
+function resolveTargetObjectId(activity: ActivityPayload) {
+  return (
+    normalizeObjectId(activity.object) ??
+    extractOfferTargetProposalId(activity.object) ??
+    extractAgreementTargetId(activity.object) ??
+    extractAgreementTargetId(activity.result)
+  );
+}
+
+function toAgreementRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function decimalToNumber(value: { toString(): string } | null | undefined) {
+  if (!value) {
+    return null;
+  }
+
+  const parsed = Number(value.toString());
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function asRecord(value: unknown) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    return null;
+  }
+  return value as Record<string, unknown>;
+}
+
+function toPositiveNumber(value: unknown) {
+  const parsed = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return null;
+  }
+  return parsed;
+}
+
+function extractOfferQuantity(agreementJson: Record<string, unknown>) {
+  const resourceQuantity = asRecord(agreementJson.resourceQuantity);
+  const quantity = resourceQuantity ? toPositiveNumber(resourceQuantity.hasNumericalValue) : null;
+  return quantity ?? 1;
+}
+
+function extractIsoCurrency(value: unknown) {
+  if (typeof value !== "string") {
+    return null;
+  }
+
+  const cleaned = value.trim().toUpperCase();
+  if (/^[A-Z]{3}$/.test(cleaned)) {
+    return cleaned;
+  }
+
+  const urnMatch = cleaned.match(/:([A-Z]{3})$/);
+  return urnMatch ? urnMatch[1] : null;
+}
+
+function extractOfferCurrency(agreementJson: Record<string, unknown>) {
+  const reciprocal = asRecord(agreementJson.reciprocal);
+  if (!reciprocal) {
+    return null;
+  }
+
+  const reciprocalResourceQuantity = asRecord(reciprocal.resourceQuantity);
+  return (
+    extractIsoCurrency(reciprocalResourceQuantity?.hasUnit) ??
+    extractIsoCurrency(reciprocal.hasUnit) ??
+    extractIsoCurrency(reciprocal.resourceConformsTo) ??
+    null
+  );
 }
 
 export async function persistInboundActivity(params: {
@@ -128,6 +374,7 @@ export async function persistInboundActivity(params: {
   }
 
   const persistedActivityId = resolvePersistedActivityId(params.activity);
+  const workflowType = isMarketplaceWorkflow(params.activity) ? "MARKETPLACE" : "SOCIAL";
 
   return prisma.inboxActivityLog.upsert({
     where: {
@@ -138,6 +385,8 @@ export async function persistInboundActivity(params: {
       processed: params.processed ?? false,
       processingError: params.processingError ?? null,
       rawActivity: params.activity as object,
+      workflowType,
+      targetObjectId: resolveTargetObjectId(params.activity),
       receivedAt: new Date(),
     },
     create: {
@@ -148,12 +397,217 @@ export async function persistInboundActivity(params: {
       processed: params.processed ?? false,
       processingError: params.processingError ?? null,
       rawActivity: params.activity as object,
+      workflowType,
+      targetObjectId: resolveTargetObjectId(params.activity),
     },
   });
 }
 
-function isAdminActor(actor: string) {
-  return env.ADMIN_ACTOR_URIS.includes(actor);
+async function processInboundOffer(activity: ActivityPayload) {
+  if (!activity.actor) {
+    return;
+  }
+
+  const proposalId = extractOfferTargetProposalId(activity.object);
+  if (!proposalId) {
+    return;
+  }
+
+  const agreementJson = toAgreementRecord(activity.object);
+  if (!agreementJson) {
+    return;
+  }
+
+  const remoteInboxes = await fetchActorInbox(activity.actor);
+  const activityId = resolvePersistedActivityId(activity);
+
+  const offer = await recordInboundMarketplaceOffer({
+    activityId,
+    remoteActorId: activity.actor,
+    remoteInbox: remoteInboxes.inbox,
+    proposalActivityPubId: proposalId,
+    agreementJson,
+  });
+
+  if (!offer) {
+    await sendRejectOffer({
+      actor: activity.actor,
+      inbox: remoteInboxes.inbox,
+      offerActivityId: activityId,
+      reason: "Unknown proposal target",
+    });
+    return;
+  }
+
+  if (offer.status !== "RECEIVED") {
+    return;
+  }
+
+  const offeredQuantity = extractOfferQuantity(agreementJson);
+  const minimumQuantity =
+    decimalToNumber(offer.proposal.minimumQuantity) ??
+    decimalToNumber(offer.proposal.listing.minimumQuantity);
+  const availableQuantity =
+    decimalToNumber(offer.proposal.availableQuantity) ??
+    decimalToNumber(offer.proposal.listing.availableQuantity);
+  const listingCurrency = offer.proposal.listing.priceCurrency?.toUpperCase() ?? null;
+  const offeredCurrency = extractOfferCurrency(agreementJson);
+
+  let validationError: string | null = null;
+  if (minimumQuantity !== null && offeredQuantity < minimumQuantity) {
+    validationError = `Offer quantity cannot be lower than minimum quantity (${minimumQuantity})`;
+  } else if (availableQuantity !== null && offeredQuantity > availableQuantity) {
+    validationError = `Offer quantity cannot exceed available quantity (${availableQuantity})`;
+  } else if (listingCurrency && !offeredCurrency) {
+    validationError = `Offer currency is required and must be ${listingCurrency}`;
+  } else if (listingCurrency && offeredCurrency !== listingCurrency) {
+    validationError = `Offer currency must match listing currency (${listingCurrency})`;
+  }
+
+  if (validationError) {
+    await sendRejectOffer({
+      actor: activity.actor,
+      inbox: remoteInboxes.inbox,
+      offerActivityId: activityId,
+      reason: validationError,
+    });
+
+    await prisma.marketplaceOffer.update({
+      where: {
+        id: offer.id,
+      },
+      data: {
+        status: "REJECTED",
+        respondedAt: new Date(),
+      },
+    });
+    return;
+  }
+
+  if (offer.proposal.status !== "PUBLISHED") {
+    await sendRejectOffer({
+      actor: activity.actor,
+      inbox: remoteInboxes.inbox,
+      offerActivityId: activityId,
+      reason: "Proposal is not open for new agreements",
+    });
+
+    await prisma.marketplaceOffer.update({
+      where: {
+        id: offer.id,
+      },
+      data: {
+        status: "REJECTED",
+        respondedAt: new Date(),
+      },
+    });
+  }
+}
+
+async function processInboundAccept(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundAcceptToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
+  const agreementTarget = extractAgreementTargetId(activity.result) ?? extractAgreementTargetId(activity.object);
+  if (!agreementTarget) {
+    return;
+  }
+
+  await prisma.marketplaceAgreement.updateMany({
+    where: {
+      activityPubId: agreementTarget,
+    },
+    data: {
+      status: "ACCEPTED",
+      acceptedAt: new Date(),
+    },
+  });
+}
+
+async function processInboundReject(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundRejectToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
+  const agreementTarget = extractAgreementTargetId(activity.object) ?? extractAgreementTargetId(activity.result);
+  if (!agreementTarget) {
+    return;
+  }
+
+  await prisma.marketplaceAgreement.updateMany({
+    where: {
+      activityPubId: agreementTarget,
+    },
+    data: {
+      status: "CANCELLED",
+    },
+  });
+}
+
+async function processInboundConfirmation(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundConfirmationToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
+  if (activity.type !== "Create") {
+    return;
+  }
+
+  if (!activity.object || typeof activity.object !== "object") {
+    return;
+  }
+
+  const object = activity.object as { type?: unknown; about?: unknown; id?: unknown };
+  if (object.type !== "Document") {
+    return;
+  }
+
+  const agreementId = normalizeObjectId(object.about);
+  if (!agreementId || !agreementId.includes("/ap/agreements/")) {
+    return;
+  }
+
+  const existingAgreement = await prisma.marketplaceAgreement.findUnique({
+    where: {
+      activityPubId: agreementId,
+    },
+  });
+
+  if (!existingAgreement) {
+    return;
+  }
+
+  const confirmationActivityId =
+    normalizeObjectId(object.id) ?? activity.id ?? `${existingAgreement.activityPubId}#confirmation-${crypto.randomUUID()}`;
+
+  await prisma.marketplaceAgreement.update({
+    where: {
+      id: existingAgreement.id,
+    },
+    data: {
+      status: "COMPLETED",
+      completedAt: new Date(),
+    },
+  });
+
+  await prisma.marketplaceConfirmation.upsert({
+    where: {
+      activityId: confirmationActivityId,
+    },
+    update: {
+      documentJson: activity.object as object,
+      publishedAt: new Date(),
+    },
+    create: {
+      agreementId: existingAgreement.id,
+      activityId: confirmationActivityId,
+      documentJson: activity.object as object,
+    },
+  });
 }
 
 export async function processInboundActivity(activity: ActivityPayload) {
@@ -220,81 +674,23 @@ export async function processInboundActivity(activity: ActivityPayload) {
         status: "REMOVED",
       },
     });
-  }
-}
-
-function normalizeObjectId(value: unknown) {
-  if (typeof value === "string") {
-    return normalizeUri(value);
+    return;
   }
 
-  if (value && typeof value === "object") {
-    const objectId = (value as { id?: unknown }).id;
-    if (typeof objectId === "string") {
-      return normalizeUri(objectId);
-    }
+  if (activity.type === "Offer") {
+    await processInboundOffer(activity);
+    return;
   }
 
-  return null;
-}
-
-function normalizeUri(value: string) {
-  return value.replace(/\/+$/, "");
-}
-
-function buildAcceptObject(followActivity: ActivityPayload): Record<string, unknown> {
-  return buildFollowObjectForAccept(followActivity);
-}
-
-function buildFollowObjectForAccept(followActivity: ActivityPayload): Record<string, unknown> {
-  const hasValidFollowShape =
-    followActivity.type === "Follow" &&
-    typeof followActivity.actor === "string" &&
-    isFollowTargetingListingsActor(followActivity.object);
-
-  if (hasValidFollowShape) {
-    return { ...(followActivity as Record<string, unknown>) };
+  if (activity.type === "Accept") {
+    await processInboundAccept(activity);
+    return;
   }
 
-  return {
-    id: followActivity.id ?? `${baseUrl()}/ap/follows/${crypto.randomUUID()}`,
-    type: "Follow",
-    actor: followActivity.actor,
-    object: normalizeObjectId(followActivity.object) ?? listingsActorId(),
-  };
-}
-
-function isFollowTargetingListingsActor(object: unknown) {
-  const targetObjectId = normalizeObjectId(object);
-  return targetObjectId === normalizeUri(listingsActorId());
-}
-
-function extractUndoFollow(object: unknown) {
-  if (!object || typeof object !== "object") {
-    return null;
+  if (activity.type === "Reject") {
+    await processInboundReject(activity);
+    return;
   }
 
-  const undoObject = object as { type?: unknown; actor?: unknown; object?: unknown };
-  if (undoObject.type !== "Follow") {
-    return null;
-  }
-
-  return {
-    actor: typeof undoObject.actor === "string" ? undoObject.actor : null,
-    object: undoObject.object,
-  };
-}
-
-function resolvePersistedActivityId(activity: ActivityPayload) {
-  if (typeof activity.id === "string" && activity.id.trim().length > 0) {
-    return activity.id;
-  }
-
-  const fallbackSource = JSON.stringify({
-    actor: activity.actor,
-    type: activity.type,
-    object: activity.object ?? null,
-  });
-  const digest = createHash("sha256").update(fallbackSource).digest("hex");
-  return `urn:feditrade:inbox:${digest}`;
+  await processInboundConfirmation(activity);
 }

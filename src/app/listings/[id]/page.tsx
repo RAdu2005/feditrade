@@ -2,8 +2,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { DeleteListingButton } from "@/components/delete-listing-button";
+import { ListingOfferForm } from "@/components/listing-offer-form";
 import { ListingImageGallery } from "@/components/listing-image-gallery";
+import { ListingReceivedOffersPanel } from "@/components/listing-received-offers-panel";
 import { getListingById } from "@/lib/listing-service";
+import { listOutboundMarketplaceOffersForUserAndListing } from "@/lib/marketplace-outbound-offer-service";
+import { listMarketplaceOffersForUserAndListing } from "@/lib/marketplace-offer-service";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -17,11 +21,28 @@ export default async function ListingDetailsPage({ params }: Params) {
   }
 
   const canManage = session?.user?.mastodonActorUri === listing.owner.actorUri;
+  const canSendOffer =
+    !!session?.user?.id && !canManage && !!listing.proposalUrl && listing.status === "ACTIVE";
+  const listingPurposeLabel = listing.proposalPurpose === "offer" ? "SELLING" : "BUYING";
+  const listingPurposeClass = listing.proposalPurpose === "offer" ? "bg-emerald-600" : "bg-red-800";
+  const sentOffers = canSendOffer
+    ? await listOutboundMarketplaceOffersForUserAndListing(session.user.id, listing.id)
+    : [];
+  const receivedOffers = canManage && session?.user?.id
+    ? await listMarketplaceOffersForUserAndListing(session.user.id, listing.id)
+    : [];
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
       <article className="rounded border border-slate-200 bg-white p-6">
-        <h1 className="text-2xl font-semibold">{listing.title}</h1>
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-2xl font-semibold">{listing.title}</h1>
+          <span
+            className={`inline-flex rounded-md px-2.5 py-1 text-xs font-extrabold tracking-wide text-white ${listingPurposeClass}`}
+          >
+            {listingPurposeLabel}
+          </span>
+        </div>
         <p className="mt-2 text-sm text-slate-600">
           {listing.priceAmount && listing.priceCurrency
             ? `${listing.priceAmount} ${listing.priceCurrency}`
@@ -49,6 +70,21 @@ export default async function ListingDetailsPage({ params }: Params) {
           </div>
           {listing.location ? <p className="mt-1">Location: {listing.location}</p> : null}
           {listing.category ? <p className="mt-1">Category: {listing.category}</p> : null}
+          <p className="mt-1">Status: {listing.status}</p>
+          {listing.availableQuantity ? (
+            <p className="mt-1">
+              Quantity: {listing.availableQuantity}
+              {listing.unitCode ? ` ${listing.unitCode}` : ""}
+            </p>
+          ) : null}
+          {listing.proposalUrl ? (
+            <p className="mt-1">
+              Proposal:{" "}
+              <a className="underline" href={listing.proposalUrl} target="_blank" rel="noreferrer">
+                {listing.proposalUrl}
+              </a>
+            </p>
+          ) : null}
         </div>
 
         {canManage ? (
@@ -61,6 +97,33 @@ export default async function ListingDetailsPage({ params }: Params) {
             </Link>
             <DeleteListingButton listingId={listing.id} />
           </div>
+        ) : null}
+
+        {canSendOffer ? (
+          <ListingOfferForm
+            listingId={listing.id}
+            listingCurrency={listing.priceCurrency}
+            listingUnitCode={listing.unitCode}
+            sentOffers={sentOffers.map((offer) => ({
+              id: offer.id,
+              status: offer.status,
+              sentAt: offer.sentAt.toISOString(),
+              respondedAt: offer.respondedAt?.toISOString() ?? null,
+            }))}
+          />
+        ) : null}
+
+        {canManage ? (
+          <ListingReceivedOffersPanel
+            listingStatus={listing.status}
+            offers={receivedOffers.map((offer) => ({
+              id: offer.id,
+              remoteActorId: offer.remoteActorId,
+              status: offer.status,
+              receivedAt: offer.receivedAt.toISOString(),
+              agreementId: offer.agreement?.id ?? null,
+            }))}
+          />
         ) : null}
       </article>
     </main>

@@ -6,6 +6,7 @@ Next.js marketplace MVP with:
 - Authenticated listing CRUD
 - S3-compatible image uploads (MinIO/S3)
 - ActivityPub endpoints (`WebFinger`, actor, inbox, outbox, objects)
+- Dual-projection federation: legacy `Note` + canonical FEP-0837 proposal/agreement flow
 - Postgres-backed federation delivery queue + worker
 - Minimal admin tooling for takedown/retry
 
@@ -57,6 +58,12 @@ UI priority configuration:
 - `NEXT_PUBLIC_PRIORITY_CURRENCIES` (CSV, default `EUR,USD,CNY`)
 - `NEXT_PUBLIC_PRIORITY_COUNTRIES` (CSV of ISO-3166 alpha-2, default `FI,US,CN`)
 
+Federation projection flags:
+- `AP_ENABLE_LEGACY_NOTES` (`true`/`false`)
+- `AP_ENABLE_FEP_MARKETPLACE` (`true`/`false`)
+- `AP_FEP_CAPABLE_INSTANCES` (CSV domains for canonical marketplace projection)
+- `AP_MARKETPLACE_ACTOR_MODE` (`shared` or `per-user`, currently implemented as `shared`)
+
 ## Docker Compose (One Command Local Stack)
 
 ```bash
@@ -83,11 +90,15 @@ You can override host port bindings with `APP_PORT_BIND`, `MINIO_API_PORT_BIND`,
 - `POST /api/listings`
 - `PATCH /api/listings/:id`
 - `DELETE /api/listings/:id`
+- `POST /api/listings/:id/offers`
 - `POST /api/uploads`
 - `GET /api/health`
 - `GET /api/admin/federation/failures`
 - `POST /api/admin/federation/retry/:jobId`
 - `POST /api/admin/listings/:id/takedown`
+- `POST /api/offers/:id/accept`
+- `POST /api/offers/:id/reject`
+- `POST /api/agreements/:id/complete`
 
 ActivityPub:
 - `GET /.well-known/webfinger`
@@ -96,6 +107,8 @@ ActivityPub:
 - `POST /ap/inbox`
 - `GET /ap/outbox`
 - `GET /ap/objects/:id`
+- `GET /ap/proposals/:id`
+- `GET /ap/agreements/:id`
 
 ## Tests
 
