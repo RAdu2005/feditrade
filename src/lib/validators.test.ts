@@ -1,4 +1,4 @@
-import { listingCreateSchema } from "@/lib/validators";
+import { listingCreateSchema, outboundMarketplaceOfferSchema } from "@/lib/validators";
 
 describe("validators", () => {
   it("accepts valid listing payload", () => {
@@ -27,5 +27,19 @@ describe("validators", () => {
     });
 
     expect(parsed.success).toBe(false);
+  });
+
+  it("accepts valid outbound marketplace offer payload", () => {
+    const parsed = outboundMarketplaceOfferSchema.safeParse({
+      targetProposalId: "https://remote.example/ap/proposals/abc",
+      targetActorId: "https://remote.example/users/alice",
+      quantity: 2,
+      unitCode: "EA",
+      amount: 120,
+      currency: "EUR",
+      note: "I can pay immediately.",
+    });
+
+    expect(parsed.success).toBe(true);
   });
 });

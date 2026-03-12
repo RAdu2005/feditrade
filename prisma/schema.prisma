@@ -71,6 +71,13 @@ enum MarketplaceAgreementStatus {
   CANCELLED
 }
 
+enum MarketplaceOutboundOfferStatus {
+  SENT
+  ACCEPTED
+  REJECTED
+  CANCELLED
+}
+
 enum AdminActionType {
   TAKE_DOWN_LISTING
   RESTORE_LISTING
@@ -92,6 +99,7 @@ model User {
 
   listings Listing[]
   sessions Session[]
+  outboundOffers MarketplaceOutboundOffer[]
 
   @@unique([mastodonDomain, mastodonAccountId])
 }
@@ -259,6 +267,60 @@ model MarketplaceConfirmation {
   agreement MarketplaceAgreement @relation(fields: [agreementId], references: [id], onDelete: Cascade)
 
   @@index([agreementId, publishedAt(sort: Desc)])
+}
+
+model MarketplaceOutboundOffer {
+  id                 String                       @id @default(cuid())
+  localUserId        String
+  activityId         String                       @unique
+  actorId            String
+  targetProposalId   String
+  targetActorId      String
+  targetInbox        String
+  agreementJson      Json
+  status             MarketplaceOutboundOfferStatus @default(SENT)
+  responseActivityId String?
+  responseJson       Json?
+  sentAt             DateTime                     @default(now())
+  respondedAt        DateTime?
+  createdAt          DateTime                     @default(now())
+  updatedAt          DateTime                     @updatedAt
+
+  localUser     User                            @relation(fields: [localUserId], references: [id], onDelete: Cascade)
+  agreement     MarketplaceOutboundAgreement?
+  confirmations MarketplaceOutboundConfirmation[]
+
+  @@index([localUserId, sentAt(sort: Desc)])
+}
+
+model MarketplaceOutboundAgreement {
+  id              String                   @id @default(cuid())
+  outboundOfferId String                   @unique
+  agreementId     String                   @unique
+  agreementJson   Json
+  status          MarketplaceAgreementStatus @default(ACCEPTED)
+  acceptedAt      DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  outboundOffer MarketplaceOutboundOffer @relation(fields: [outboundOfferId], references: [id], onDelete: Cascade)
+  confirmations MarketplaceOutboundConfirmation[]
+}
+
+model MarketplaceOutboundConfirmation {
+  id                  String   @id @default(cuid())
+  outboundOfferId     String
+  outboundAgreementId String?
+  activityId          String   @unique
+  documentJson        Json
+  publishedAt         DateTime @default(now())
+  createdAt           DateTime @default(now())
+
+  outboundOffer     MarketplaceOutboundOffer @relation(fields: [outboundOfferId], references: [id], onDelete: Cascade)
+  outboundAgreement MarketplaceOutboundAgreement? @relation(fields: [outboundAgreementId], references: [id], onDelete: SetNull)
+
+  @@index([outboundOfferId, publishedAt(sort: Desc)])
 }
 
 model ListingImage {

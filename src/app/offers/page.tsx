@@ -13,7 +13,23 @@ export default async function OffersPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-6 py-10">
-      <h1 className="text-2xl font-semibold">Remote Offers</h1>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h1 className="text-2xl font-semibold">Remote Offers</h1>
+        <div className="flex gap-2">
+          <Link
+            href="/offers/sent"
+            className="rounded border border-slate-300 px-3 py-1.5 text-xs font-medium"
+          >
+            Sent offers
+          </Link>
+          <Link
+            href="/offers/remote"
+            className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+          >
+            Send offer
+          </Link>
+        </div>
+      </div>
       <p className="mt-2 text-sm text-slate-600">Offers received from federated actors for your marketplace proposals.</p>
 
       {offers.length === 0 ? (

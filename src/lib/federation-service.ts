@@ -9,6 +9,11 @@ import {
 import { env } from "@/lib/env";
 import { childLogger } from "@/lib/logger";
 import { recordInboundMarketplaceOffer } from "@/lib/marketplace-offer-service";
+import {
+  applyInboundAcceptToOutboundOffer,
+  applyInboundConfirmationToOutboundOffer,
+  applyInboundRejectToOutboundOffer,
+} from "@/lib/marketplace-outbound-offer-service";
 import { prisma } from "@/lib/prisma";
 
 type ActivityPayload = {
@@ -396,6 +401,11 @@ async function processInboundOffer(activity: ActivityPayload) {
 }
 
 async function processInboundAccept(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundAcceptToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
   const agreementTarget = extractAgreementTargetId(activity.result) ?? extractAgreementTargetId(activity.object);
   if (!agreementTarget) {
     return;
@@ -413,6 +423,11 @@ async function processInboundAccept(activity: ActivityPayload) {
 }
 
 async function processInboundReject(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundRejectToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
   const agreementTarget = extractAgreementTargetId(activity.object) ?? extractAgreementTargetId(activity.result);
   if (!agreementTarget) {
     return;
@@ -429,6 +444,11 @@ async function processInboundReject(activity: ActivityPayload) {
 }
 
 async function processInboundConfirmation(activity: ActivityPayload) {
+  const matchedOutbound = await applyInboundConfirmationToOutboundOffer(activity);
+  if (matchedOutbound) {
+    return;
+  }
+
   if (activity.type !== "Create") {
     return;
   }
