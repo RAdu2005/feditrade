@@ -48,12 +48,28 @@ function splitCsv(value: string): string[] {
     .filter(Boolean);
 }
 
+function normalizeDomainLikeEntry(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  try {
+    return new URL(trimmed).hostname.toLowerCase();
+  } catch {
+    return trimmed
+      .replace(/^https?:\/\//i, "")
+      .split("/")[0]
+      ?.toLowerCase() ?? null;
+  }
+}
+
 export const env = {
   ...parsed.data,
   AP_FEDERATION_TARGETS: splitCsv(parsed.data.AP_FEDERATION_TARGETS),
-  AP_FEP_CAPABLE_INSTANCES: splitCsv(parsed.data.AP_FEP_CAPABLE_INSTANCES).map((domain) =>
-    domain.toLowerCase(),
-  ),
+  AP_FEP_CAPABLE_INSTANCES: splitCsv(parsed.data.AP_FEP_CAPABLE_INSTANCES)
+    .map(normalizeDomainLikeEntry)
+    .filter((value): value is string => Boolean(value)),
   AP_ENABLE_LEGACY_NOTES: parsed.data.AP_ENABLE_LEGACY_NOTES === "true",
   AP_ENABLE_FEP_MARKETPLACE: parsed.data.AP_ENABLE_FEP_MARKETPLACE === "true",
   ADMIN_ACTOR_URIS: splitCsv(parsed.data.ADMIN_ACTOR_URIS),

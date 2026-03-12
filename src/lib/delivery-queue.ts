@@ -8,7 +8,20 @@ type DeliveryTarget = {
 };
 
 function parseTargetSpec(spec: string) {
-  const [actor, inbox] = spec.split("|").map((part) => part?.trim());
+  const trimmed = spec.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!trimmed.includes("|")) {
+    // Backward compatibility: allow plain inbox URLs.
+    return {
+      actor: null,
+      inbox: trimmed,
+    };
+  }
+
+  const [actor, inbox] = trimmed.split("|").map((part) => part?.trim());
   if (!inbox) {
     return null;
   }
