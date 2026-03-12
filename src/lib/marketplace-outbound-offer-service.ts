@@ -16,6 +16,15 @@ type OutboundOfferInput = {
   unitCode?: string | null;
   amount?: number | null;
   currency?: string | null;
+  localListingId?: string | null;
+};
+
+type ListingOfferInput = {
+  note?: string | null;
+  quantity?: number | null;
+  unitCode?: string | null;
+  amount?: number | null;
+  currency?: string | null;
 };
 
 type InboundActivityPayload = {
@@ -74,16 +83,44 @@ function extractAgreementIdFromAccept(result: unknown) {
 
   if (result && typeof result === "object") {
     const record = result as Record<string, unknown>;
-    const basedOn = normalizeObjectId(record.basedOn);
-    if (basedOn && basedOn.includes("/ap/agreements/")) {
-      return basedOn;
+    const nestedId =
+      normalizeObjectId(record.id) ??
+      normalizeObjectId(record.agreement) ??
+      normalizeObjectId(record.object) ??
+      normalizeObjectId(record.about);
+
+    if (nestedId && nestedId.includes("/ap/agreements/")) {
+      return nestedId;
     }
   }
 
   return objectId;
 }
 
-async function fetchActorInbox(actorUrl: string) {
+function jsonOrNull(value: unknown) {
+  if (value === undefined || value === null) {
+    return Prisma.DbNull;
+  }
+
+  return value as Prisma.InputJsonValue;
+}
+
+function normalizeActorFromUnknown(value: unknown) {
+  if (typeof value === "string" && value.trim().length > 0) {
+    return value.trim();
+  }
+
+  if (value && typeof value === "object") {
+    const id = (value as { id?: unknown }).id;
+    if (typeof id === "string" && id.trim().length > 0) {
+      return id.trim();
+    }
+  }
+
+  return null;
+}
+
+async function fetchActorDocument(actorUrl: string) {
   const response = await fetch(actorUrl, {
     headers: {
       accept: ACTOR_FETCH_ACCEPT_HEADER,
@@ -94,18 +131,53 @@ async function fetchActorInbox(actorUrl: string) {
     throw new Error(`Unable to fetch target actor ${actorUrl}`);
   }
 
-  const actor = (await response.json()) as {
+  return (await response.json()) as {
     inbox?: string;
     endpoints?: {
       sharedInbox?: string;
     };
   };
+}
+
+async function fetchActorInbox(actorUrl: string) {
+  const actor = await fetchActorDocument(actorUrl);
 
   if (!actor.inbox) {
     throw new Error(`Target actor ${actorUrl} does not expose inbox`);
   }
 
   return actor.endpoints?.sharedInbox ?? actor.inbox;
+}
+
+async function discoverTargetActorForProposal(params: {
+  targetProposalId: string;
+  fallbackActorId: string;
+}) {
+  try {
+    const response = await fetch(params.targetProposalId, {
+      headers: {
+        accept: ACTOR_FETCH_ACCEPT_HEADER,
+      },
+    });
+
+    if (!response.ok) {
+      return params.fallbackActorId;
+    }
+
+    const proposal = (await response.json()) as {
+      attributedTo?: unknown;
+      actor?: unknown;
+      to?: unknown;
+    };
+
+    return (
+      normalizeActorFromUnknown(proposal.attributedTo) ??
+      normalizeActorFromUnknown(proposal.actor) ??
+      params.fallbackActorId
+    );
+  } catch {
+    return params.fallbackActorId;
+  }
 }
 
 async function sendSignedActivity(targetInbox: string, activity: Record<string, unknown>) {
@@ -169,15 +241,21 @@ function agreementPayload(input: OutboundOfferInput) {
 }
 
 export async function sendOutboundMarketplaceOffer(userId: string, input: OutboundOfferInput) {
-  const targetInbox = input.targetInbox?.trim() || (await fetchActorInbox(input.targetActorId));
-  const activityId = `${crypto.randomUUID()}`;
+  const inferredActorId = await discoverTargetActorForProposal({
+    targetProposalId: input.targetProposalId,
+    fallbackActorId: input.targetActorId,
+  });
+  const targetInbox = input.targetInbox?.trim() || (await fetchActorInbox(inferredActorId));
 
   const offerActivity = createActivity({
-    id: activityId,
+    id: crypto.randomUUID(),
     type: "Offer",
-    to: [input.targetActorId],
+    to: [inferredActorId],
     cc: [],
-    object: agreementPayload(input),
+    object: agreementPayload({
+      ...input,
+      targetActorId: inferredActorId,
+    }),
   });
 
   await sendSignedActivity(targetInbox, offerActivity);
@@ -185,10 +263,11 @@ export async function sendOutboundMarketplaceOffer(userId: string, input: Outbou
   return prisma.marketplaceOutboundOffer.create({
     data: {
       localUserId: userId,
+      localListingId: input.localListingId ?? null,
       activityId: offerActivity.id,
       actorId: listingsActorId(),
       targetProposalId: input.targetProposalId,
-      targetActorId: input.targetActorId,
+      targetActorId: inferredActorId,
       targetInbox,
       agreementJson: offerActivity.object as Prisma.InputJsonValue,
       status: MarketplaceOutboundOfferStatus.SENT,
@@ -198,6 +277,46 @@ export async function sendOutboundMarketplaceOffer(userId: string, input: Outbou
       agreement: true,
       confirmations: true,
     },
+  });
+}
+
+export async function sendOutboundMarketplaceOfferForListing(
+  userId: string,
+  listingId: string,
+  input: ListingOfferInput,
+) {
+  const listing = await prisma.listing.findUnique({
+    where: {
+      id: listingId,
+    },
+    include: {
+      proposal: true,
+      owner: {
+        select: {
+          id: true,
+          mastodonActorUri: true,
+        },
+      },
+    },
+  });
+
+  if (!listing || !listing.proposal) {
+    return null;
+  }
+
+  if (listing.owner.id === userId) {
+    throw new Error("You cannot send an offer on your own listing");
+  }
+
+  return sendOutboundMarketplaceOffer(userId, {
+    targetProposalId: listing.proposal.activityPubId,
+    targetActorId: listing.owner.mastodonActorUri,
+    note: input.note,
+    quantity: input.quantity,
+    unitCode: input.unitCode,
+    amount: input.amount,
+    currency: input.currency,
+    localListingId: listing.id,
   });
 }
 
@@ -213,6 +332,23 @@ export async function listOutboundMarketplaceOffersForUser(userId: string) {
     orderBy: {
       sentAt: "desc",
     },
+  });
+}
+
+export async function listOutboundMarketplaceOffersForUserAndListing(userId: string, listingId: string) {
+  return prisma.marketplaceOutboundOffer.findMany({
+    where: {
+      localUserId: userId,
+      localListingId: listingId,
+    },
+    include: {
+      agreement: true,
+      confirmations: true,
+    },
+    orderBy: {
+      sentAt: "desc",
+    },
+    take: 10,
   });
 }
 
@@ -257,7 +393,7 @@ export async function applyInboundAcceptToOutboundOffer(activity: InboundActivit
       status: MarketplaceOutboundOfferStatus.ACCEPTED,
       respondedAt: now,
       responseActivityId: activity.id ?? null,
-      responseJson: (activity as unknown as Prisma.InputJsonValue) ?? Prisma.DbNull,
+      responseJson: jsonOrNull(activity),
     },
   });
 
@@ -309,7 +445,7 @@ export async function applyInboundRejectToOutboundOffer(activity: InboundActivit
       status: MarketplaceOutboundOfferStatus.REJECTED,
       respondedAt: new Date(),
       responseActivityId: activity.id ?? null,
-      responseJson: (activity as unknown as Prisma.InputJsonValue) ?? Prisma.DbNull,
+      responseJson: jsonOrNull(activity),
     },
   });
 
@@ -335,9 +471,6 @@ export async function applyInboundConfirmationToOutboundOffer(activity: InboundA
     where: {
       agreementId,
     },
-    include: {
-      outboundOffer: true,
-    },
   });
 
   if (!outboundAgreement) {
@@ -355,7 +488,8 @@ export async function applyInboundConfirmationToOutboundOffer(activity: InboundA
     },
   });
 
-  const activityId = normalizeObjectId(payload.id) ?? activity.id ?? `${agreementId}#confirmation-${crypto.randomUUID()}`;
+  const activityId =
+    normalizeObjectId(payload.id) ?? activity.id ?? `${agreementId}#confirmation-${crypto.randomUUID()}`;
 
   await prisma.marketplaceOutboundConfirmation.upsert({
     where: {

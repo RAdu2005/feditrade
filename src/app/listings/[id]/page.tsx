@@ -2,8 +2,10 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
 import { DeleteListingButton } from "@/components/delete-listing-button";
+import { ListingOfferForm } from "@/components/listing-offer-form";
 import { ListingImageGallery } from "@/components/listing-image-gallery";
 import { getListingById } from "@/lib/listing-service";
+import { listOutboundMarketplaceOffersForUserAndListing } from "@/lib/marketplace-outbound-offer-service";
 
 type Params = {
   params: Promise<{ id: string }>;
@@ -17,6 +19,10 @@ export default async function ListingDetailsPage({ params }: Params) {
   }
 
   const canManage = session?.user?.mastodonActorUri === listing.owner.actorUri;
+  const canSendOffer = !!session?.user?.id && !canManage && !!listing.proposalUrl;
+  const sentOffers = canSendOffer
+    ? await listOutboundMarketplaceOffersForUserAndListing(session.user.id, listing.id)
+    : [];
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -76,6 +82,17 @@ export default async function ListingDetailsPage({ params }: Params) {
             </Link>
             <DeleteListingButton listingId={listing.id} />
           </div>
+        ) : null}
+
+        {canSendOffer ? (
+          <ListingOfferForm
+            listingId={listing.id}
+            sentOffers={sentOffers.map((offer) => ({
+              id: offer.id,
+              status: offer.status,
+              sentAt: offer.sentAt.toISOString(),
+            }))}
+          />
         ) : null}
       </article>
     </main>

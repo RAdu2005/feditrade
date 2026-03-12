@@ -1,4 +1,8 @@
-import { listingCreateSchema, outboundMarketplaceOfferSchema } from "@/lib/validators";
+import {
+  listingCreateSchema,
+  listingMarketplaceOfferSchema,
+  outboundMarketplaceOfferSchema,
+} from "@/lib/validators";
 
 describe("validators", () => {
   it("accepts valid listing payload", () => {
@@ -38,6 +42,18 @@ describe("validators", () => {
       amount: 120,
       currency: "EUR",
       note: "I can pay immediately.",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts valid listing-integrated offer payload", () => {
+    const parsed = listingMarketplaceOfferSchema.safeParse({
+      quantity: 1,
+      unitCode: "EA",
+      amount: 75,
+      currency: "EUR",
+      note: "Can buy this week.",
     });
 
     expect(parsed.success).toBe(true);

@@ -167,6 +167,7 @@ model Listing {
   owner            User                   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
   images           ListingImage[]
   proposal         MarketplaceProposal?
+  outboundOffers   MarketplaceOutboundOffer[]
   outboxActivities OutboxActivity[]
 
   @@index([status, createdAt(sort: Desc), id])
@@ -272,6 +273,7 @@ model MarketplaceConfirmation {
 model MarketplaceOutboundOffer {
   id                 String                       @id @default(cuid())
   localUserId        String
+  localListingId     String?
   activityId         String                       @unique
   actorId            String
   targetProposalId   String
@@ -287,10 +289,12 @@ model MarketplaceOutboundOffer {
   updatedAt          DateTime                     @updatedAt
 
   localUser     User                            @relation(fields: [localUserId], references: [id], onDelete: Cascade)
+  localListing  Listing?                        @relation(fields: [localListingId], references: [id], onDelete: SetNull)
   agreement     MarketplaceOutboundAgreement?
   confirmations MarketplaceOutboundConfirmation[]
 
   @@index([localUserId, sentAt(sort: Desc)])
+  @@index([localListingId, sentAt(sort: Desc)])
 }
 
 model MarketplaceOutboundAgreement {

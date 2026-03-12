@@ -90,6 +90,7 @@ You can override host port bindings with `APP_PORT_BIND`, `MINIO_API_PORT_BIND`,
 - `POST /api/listings`
 - `PATCH /api/listings/:id`
 - `DELETE /api/listings/:id`
+- `POST /api/listings/:id/offers`
 - `POST /api/uploads`
 - `GET /api/health`
 - `GET /api/admin/federation/failures`
@@ -97,7 +98,6 @@ You can override host port bindings with `APP_PORT_BIND`, `MINIO_API_PORT_BIND`,
 - `POST /api/admin/listings/:id/takedown`
 - `POST /api/offers/:id/accept`
 - `POST /api/offers/:id/reject`
-- `POST /api/offers/remote`
 - `POST /api/agreements/:id/complete`
 
 ActivityPub:

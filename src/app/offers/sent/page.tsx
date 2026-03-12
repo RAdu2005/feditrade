@@ -15,8 +15,8 @@ export default async function SentOffersPage() {
     <main className="mx-auto max-w-5xl px-6 py-10">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-2xl font-semibold">Sent Federated Offers</h1>
-        <Link className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white" href="/offers/remote">
-          New offer
+        <Link className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white" href="/">
+          Browse listings
         </Link>
       </div>
 
