@@ -5,6 +5,7 @@ import { prisma } from "./prisma";
 type DeliveryTarget = {
   actor: string | null;
   inbox: string;
+  marketplaceCapable?: boolean;
 };
 
 function parseTargetSpec(spec: string) {
@@ -46,15 +47,27 @@ function hostnameFromUrl(value: string | null) {
 function dedupeTargets(targets: DeliveryTarget[]) {
   const deduped = new Map<string, DeliveryTarget>();
   for (const target of targets) {
-    if (!deduped.has(target.inbox)) {
+    const existing = deduped.get(target.inbox);
+    if (!existing) {
       deduped.set(target.inbox, target);
+      continue;
     }
+
+    deduped.set(target.inbox, {
+      actor: existing.actor ?? target.actor,
+      inbox: target.inbox,
+      marketplaceCapable: Boolean(existing.marketplaceCapable || target.marketplaceCapable),
+    });
   }
 
   return [...deduped.values()];
 }
 
 function isMarketplaceCapableTarget(target: DeliveryTarget) {
+  if (target.marketplaceCapable) {
+    return true;
+  }
+
   if (env.AP_FEP_CAPABLE_INSTANCES.length === 0) {
     return false;
   }
@@ -67,13 +80,27 @@ function isMarketplaceCapableTarget(target: DeliveryTarget) {
 }
 
 async function allKnownTargets() {
-  const followers = await prisma.federationFollower.findMany({
-    select: {
-      actor: true,
-      inbox: true,
-      sharedInbox: true,
-    },
-  });
+  const [followers, trackedInstances] = await Promise.all([
+    prisma.federationFollower.findMany({
+      select: {
+        actor: true,
+        inbox: true,
+        sharedInbox: true,
+      },
+    }),
+    prisma.federationTrackedInstance.findMany({
+      where: {
+        followStatus: {
+          in: ["PENDING", "ACCEPTED"],
+        },
+      },
+      select: {
+        actorId: true,
+        inbox: true,
+        sharedInbox: true,
+      },
+    }),
+  ]);
 
   const staticTargets = env.AP_FEDERATION_TARGETS.map(parseTargetSpec).filter(Boolean) as DeliveryTarget[];
 
@@ -81,8 +108,14 @@ async function allKnownTargets() {
     ...followers.map((follower) => ({
       actor: follower.actor,
       inbox: follower.sharedInbox ?? follower.inbox,
+      marketplaceCapable: false,
     })),
     ...staticTargets,
+    ...trackedInstances.map((instance) => ({
+      actor: instance.actorId,
+      inbox: instance.sharedInbox ?? instance.inbox,
+      marketplaceCapable: true,
+    })),
   ];
 
   return dedupeTargets(combined);
