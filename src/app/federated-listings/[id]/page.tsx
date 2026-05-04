@@ -112,12 +112,16 @@ export default async function FederatedListingDetailsPage({ params }: Params) {
         {canSendOffer ? (
           <ListingOfferForm
             listingId={listing.id}
+            listingViewHref={`/federated-listings/${listing.id}`}
             offerEndpoint={`/api/federated-listings/${listing.id}/offers`}
             listingCurrency={listing.priceCurrency}
             listingUnitCode={listing.unitCode}
             sentOffers={sentOffers.map((offer) => ({
               id: offer.id,
               status: offer.status,
+              targetActorId: offer.targetActorId,
+              agreementJson: offer.agreementJson,
+              responseJson: offer.responseJson,
               sentAt: offer.sentAt.toISOString(),
               respondedAt: offer.respondedAt?.toISOString() ?? null,
             }))}

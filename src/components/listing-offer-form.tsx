@@ -3,16 +3,26 @@
 import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import {
+  domainLabelFromUri,
+  extractOfferReadableSummary,
+  extractRejectReason,
+  formatLocalDateTime,
+} from "@/lib/offer-display";
 
 type SentOffer = {
   id: string;
   status: string;
+  targetActorId: string;
+  agreementJson: unknown;
+  responseJson: unknown;
   sentAt: string;
   respondedAt?: string | null;
 };
 
 type Props = {
   listingId: string;
+  listingViewHref?: string;
   offerEndpoint?: string;
   listingCurrency: string | null;
   listingUnitCode: string | null;
@@ -21,6 +31,7 @@ type Props = {
 
 export function ListingOfferForm({
   listingId,
+  listingViewHref,
   offerEndpoint,
   listingCurrency,
   listingUnitCode,
@@ -188,16 +199,44 @@ export function ListingOfferForm({
       {sentOffers.length > 0 ? (
         <div className="mt-4">
           <h3 className="text-xs font-semibold">Your latest offers for this listing</h3>
-          <ul className="mt-2 space-y-1 text-xs text-slate-700">
+          <ul className="mt-2 space-y-3 text-xs text-slate-700">
             {sentOffers.map((offer) => (
-              <li key={offer.id} className="flex flex-wrap items-center gap-2">
-                <span>
-                  {offer.status} - {new Date(offer.sentAt).toLocaleString()}
-                  {offer.respondedAt ? ` (responded ${new Date(offer.respondedAt).toLocaleString()})` : ""}
-                </span>
-                <Link className="underline" href={`/offers/sent/${offer.id}`}>
-                  details
-                </Link>
+              <li key={offer.id} className="rounded border border-slate-200 bg-white p-3">
+                {(() => {
+                  const summary = extractOfferReadableSummary(offer.agreementJson);
+                  const targetDomainLabel = domainLabelFromUri(offer.targetActorId);
+                  const rejectReason = offer.status === "REJECTED"
+                    ? extractRejectReason(offer.responseJson)
+                    : null;
+
+                  return (
+                    <>
+                      <p className="text-xs font-medium">
+                        User {targetDomainLabel} (
+                        <Link className="underline" href={listingViewHref ?? `/listings/${listingId}`}>
+                          View listing
+                        </Link>
+                        )
+                      </p>
+                      {summary.priceText ? <p className="mt-1 text-slate-700">Price: {summary.priceText}</p> : null}
+                      {summary.quantityText ? <p className="mt-1 text-slate-700">Quantity: {summary.quantityText}</p> : null}
+                      {summary.note ? <p className="mt-1 text-slate-700">Message: {summary.note}</p> : null}
+                      <p className="mt-1 text-slate-600">Status: {offer.status}</p>
+                      <p className="mt-1 text-slate-600">Sent: {formatLocalDateTime(offer.sentAt)}</p>
+                      {offer.respondedAt ? (
+                        <p className="mt-1 text-slate-600">Responded: {formatLocalDateTime(offer.respondedAt)}</p>
+                      ) : (
+                        <p className="mt-1 text-amber-700">Awaiting response</p>
+                      )}
+                      {rejectReason ? <p className="mt-1 text-red-700">Reason: {rejectReason}</p> : null}
+                    </>
+                  );
+                })()}
+                <p className="mt-1">
+                  <Link className="underline" href={`/offers/sent/${offer.id}`}>
+                    Details
+                  </Link>
+                </p>
               </li>
             ))}
           </ul>

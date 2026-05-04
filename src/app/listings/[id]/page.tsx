@@ -124,11 +124,15 @@ export default async function ListingDetailsPage({ params }: Params) {
         {canSendOffer ? (
           <ListingOfferForm
             listingId={listing.id}
+            listingViewHref={`/listings/${listing.id}`}
             listingCurrency={listing.priceCurrency}
             listingUnitCode={listing.unitCode}
             sentOffers={sentOffers.map((offer) => ({
               id: offer.id,
               status: offer.status,
+              targetActorId: offer.targetActorId,
+              agreementJson: offer.agreementJson,
+              responseJson: offer.responseJson,
               sentAt: offer.sentAt.toISOString(),
               respondedAt: offer.respondedAt?.toISOString() ?? null,
             }))}
@@ -137,12 +141,15 @@ export default async function ListingDetailsPage({ params }: Params) {
 
         {canManage ? (
           <ListingReceivedOffersPanel
+            listingId={listing.id}
             listingStatus={listing.status}
             offers={receivedOffers.map((offer) => ({
               id: offer.id,
               remoteActorId: offer.remoteActorId,
+              agreementJson: offer.agreementJson,
               status: offer.status,
               receivedAt: offer.receivedAt.toISOString(),
+              respondedAt: offer.respondedAt?.toISOString() ?? null,
               agreementId: offer.agreement?.id ?? null,
             }))}
           />
