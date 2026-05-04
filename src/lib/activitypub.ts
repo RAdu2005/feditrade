@@ -25,7 +25,7 @@ export type ActivityPubActor = {
 export type ActivityPubActivity = {
   "@context": string[];
   id: string;
-  type: "Create" | "Update" | "Delete" | "Offer" | "Accept" | "Reject";
+  type: "Create" | "Update" | "Delete" | "Offer" | "Accept" | "Reject" | "Follow" | "Undo";
   actor: string;
   to: string[];
   cc: string[];

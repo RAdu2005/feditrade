@@ -133,6 +133,41 @@ export async function listMarketplaceOffersForUser(userId: string) {
   });
 }
 
+export async function listMarketplaceOffersGroupedByListingForUser(userId: string) {
+  const listings = await prisma.listing.findMany({
+    where: {
+      ownerId: userId,
+    },
+    select: {
+      id: true,
+      title: true,
+      status: true,
+      proposal: {
+        select: {
+          offers: {
+            include: {
+              agreement: true,
+            },
+            orderBy: {
+              receivedAt: "desc",
+            },
+          },
+        },
+      },
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
+
+  return listings.map((listing) => ({
+    id: listing.id,
+    title: listing.title,
+    status: listing.status,
+    offers: listing.proposal?.offers ?? [],
+  }));
+}
+
 export async function listMarketplaceOffersForUserAndListing(userId: string, listingId: string) {
   return prisma.marketplaceOffer.findMany({
     where: {

@@ -78,3 +78,7 @@ export const listingMarketplaceOfferSchema = z.object({
   amount: z.number().positive().max(1_000_000),
   currency: currencyCodeSchema,
 });
+
+export const trackedSourceSchema = z.object({
+  source: z.string().trim().min(3).max(500),
+});

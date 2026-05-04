@@ -71,11 +71,16 @@ function listingToApi(listing: ListingWithRelations) {
     updatedAt: listing.updatedAt.toISOString(),
     canonicalUrl: listing.canonicalUrl,
     proposalUrl: listing.proposal?.activityPubId ?? null,
+    originType: "local" as const,
+    originDomain: env.AP_INSTANCE_DOMAIN,
+    detailHref: `/listings/${listing.id}`,
+    canSendOffer: listing.status === "ACTIVE" && Boolean(listing.proposal?.activityPubId),
     owner: {
       actorUri: listing.owner.mastodonActorUri,
       username: listing.owner.mastodonUsername,
       domain: listing.owner.mastodonDomain,
       image: listing.owner.image,
+      activityPubActorUri: null,
     },
     images: listing.images.map((image) => ({
       id: image.id,
@@ -471,4 +476,31 @@ export async function deleteListing(listingId: string, ownerId: string) {
   await publishListingActivities(listingWithProposal, "Delete");
 
   return listingToApi(listingWithProposal);
+}
+
+export async function resyncFederationForAllListings() {
+  const listings = await prisma.listing.findMany({
+    include: listingInclude,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  let publishedActive = 0;
+  let publishedDeletes = 0;
+
+  for (const listing of listings) {
+    if (listing.status === "ACTIVE") {
+      await publishListingActivities(listing, "Update");
+      publishedActive += 1;
+      continue;
+    }
+
+    await publishListingActivities(listing, "Delete");
+    publishedDeletes += 1;
+  }
+
+  return {
+    totalListings: listings.length,
+    publishedActive,
+    publishedDeletes,
+  };
 }

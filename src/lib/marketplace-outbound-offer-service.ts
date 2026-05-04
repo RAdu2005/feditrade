@@ -17,6 +17,7 @@ type OutboundOfferInput = {
   amount?: number | null;
   currency?: string | null;
   localListingId?: string | null;
+  federatedListingId?: string | null;
 };
 
 type ListingOfferInput = {
@@ -34,6 +35,11 @@ type InboundActivityPayload = {
   object?: unknown;
   result?: unknown;
   [key: string]: unknown;
+};
+
+type ContactIdentity = {
+  mastodonUsername: string;
+  mastodonDomain: string;
 };
 
 function asRecord(value: unknown) {
@@ -127,6 +133,31 @@ function decimalToNumber(value: { toString(): string } | null | undefined) {
 
   const parsed = Number(value.toString());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizedMastodonUsername(value: string) {
+  return value.trim().replace(/^@+/, "");
+}
+
+function buildContactLine(identity: ContactIdentity) {
+  const username = normalizedMastodonUsername(identity.mastodonUsername);
+  const host = identity.mastodonDomain.trim().toLowerCase();
+  return `Contact: @${username}@${host}`;
+}
+
+function withContactFooter(note: string | null | undefined, identity: ContactIdentity) {
+  const contactLine = buildContactLine(identity);
+  const base = note?.trim() ?? "";
+
+  if (!base) {
+    return contactLine;
+  }
+
+  if (base.includes(contactLine)) {
+    return base;
+  }
+
+  return `${base}\n\n${contactLine}`;
 }
 
 async function fetchActorDocument(actorUrl: string) {
@@ -250,6 +281,20 @@ function agreementPayload(input: OutboundOfferInput) {
 }
 
 export async function sendOutboundMarketplaceOffer(userId: string, input: OutboundOfferInput) {
+  const localUser = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      mastodonUsername: true,
+      mastodonDomain: true,
+    },
+  });
+
+  if (!localUser) {
+    throw new Error("Local user not found");
+  }
+
   const inferredActorId = await discoverTargetActorForProposal({
     targetProposalId: input.targetProposalId,
     fallbackActorId: input.targetActorId,
@@ -263,6 +308,7 @@ export async function sendOutboundMarketplaceOffer(userId: string, input: Outbou
     cc: [],
     object: agreementPayload({
       ...input,
+      note: withContactFooter(input.note, localUser),
       targetActorId: inferredActorId,
     }),
   });
@@ -281,6 +327,7 @@ export async function sendOutboundMarketplaceOffer(userId: string, input: Outbou
       agreementJson: offerActivity.object as Prisma.InputJsonValue,
       status: MarketplaceOutboundOfferStatus.SENT,
       sentAt: new Date(),
+      federatedListingId: input.federatedListingId ?? null,
     },
     include: {
       agreement: true,
@@ -376,6 +423,80 @@ export async function sendOutboundMarketplaceOfferForListing(
   });
 }
 
+export async function sendOutboundMarketplaceOfferForFederatedListing(
+  userId: string,
+  federatedListingId: string,
+  input: ListingOfferInput,
+) {
+  const listing = await prisma.federatedListing.findUnique({
+    where: {
+      id: federatedListingId,
+    },
+  });
+
+  if (!listing) {
+    return null;
+  }
+
+  if (listing.status !== "ACTIVE") {
+    throw new Error("Listing is not accepting new offers");
+  }
+
+  const offeredQuantity = input.quantity;
+  const minimumQuantity = decimalToNumber(listing.minimumQuantity);
+  const availableQuantity = decimalToNumber(listing.availableQuantity);
+  const listingUnitCode = listing.unitCode?.toUpperCase() ?? null;
+  const offeredUnitCode = input.unitCode?.toUpperCase() ?? null;
+  const offeredAmount = input.amount;
+  const listingCurrency = listing.priceCurrency?.toUpperCase() ?? null;
+  const offeredCurrency = input.currency?.toUpperCase() ?? null;
+
+  if (offeredQuantity <= 0) {
+    throw new Error("Offer quantity must be greater than zero");
+  }
+
+  if (minimumQuantity !== null && offeredQuantity < minimumQuantity) {
+    throw new Error(`Offer quantity cannot be lower than minimum quantity (${minimumQuantity})`);
+  }
+
+  if (availableQuantity !== null && offeredQuantity > availableQuantity) {
+    throw new Error(`Offer quantity cannot exceed available quantity (${availableQuantity})`);
+  }
+
+  if (!Number.isFinite(offeredAmount) || offeredAmount <= 0) {
+    throw new Error("Offer amount must be greater than zero");
+  }
+
+  if (listingUnitCode) {
+    if (!offeredUnitCode) {
+      throw new Error(`Offer unit code is required and must be ${listingUnitCode}`);
+    }
+    if (offeredUnitCode !== listingUnitCode) {
+      throw new Error(`Offer unit code must match listing unit code (${listingUnitCode})`);
+    }
+  }
+
+  if (listingCurrency) {
+    if (!offeredCurrency) {
+      throw new Error(`Offer currency is required and must be ${listingCurrency}`);
+    }
+    if (offeredCurrency !== listingCurrency) {
+      throw new Error(`Offer currency must match listing currency (${listingCurrency})`);
+    }
+  }
+
+  return sendOutboundMarketplaceOffer(userId, {
+    targetProposalId: listing.proposalId,
+    targetActorId: listing.remoteActorId,
+    note: input.note,
+    quantity: offeredQuantity,
+    unitCode: offeredUnitCode,
+    amount: offeredAmount,
+    currency: offeredCurrency,
+    federatedListingId: listing.id,
+  });
+}
+
 export async function listOutboundMarketplaceOffersForUser(userId: string) {
   return prisma.marketplaceOutboundOffer.findMany({
     where: {
@@ -396,6 +517,26 @@ export async function listOutboundMarketplaceOffersForUserAndListing(userId: str
     where: {
       localUserId: userId,
       localListingId: listingId,
+    },
+    include: {
+      agreement: true,
+      confirmations: true,
+    },
+    orderBy: {
+      sentAt: "desc",
+    },
+    take: 10,
+  });
+}
+
+export async function listOutboundMarketplaceOffersForUserAndFederatedListing(
+  userId: string,
+  federatedListingId: string,
+) {
+  return prisma.marketplaceOutboundOffer.findMany({
+    where: {
+      localUserId: userId,
+      federatedListingId,
     },
     include: {
       agreement: true,

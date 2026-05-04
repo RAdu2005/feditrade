@@ -3,12 +3,19 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import {
+  domainLabelFromUri,
+  extractOfferReadableSummary,
+  formatLocalDateTime,
+} from "@/lib/offer-display";
 
 type ReceivedOffer = {
   id: string;
   remoteActorId: string;
+  agreementJson: unknown;
   status: "RECEIVED" | "ACCEPTED" | "REJECTED" | "CANCELLED";
   receivedAt: string;
+  respondedAt: string | null;
   agreementId: string | null;
 };
 
@@ -54,9 +61,30 @@ export function ListingReceivedOffersPanel({ listingStatus, offers }: Props) {
         <ul className="mt-3 space-y-3">
           {offers.map((offer) => (
             <li key={offer.id} className="rounded border border-slate-200 bg-white p-3">
-              <p className="text-xs font-medium">From: {offer.remoteActorId}</p>
+              {(() => {
+                const summary = extractOfferReadableSummary(offer.agreementJson);
+                const senderDomainLabel = domainLabelFromUri(offer.remoteActorId);
+
+                return (
+                  <>
+                    <p className="text-xs font-medium">
+                      From: User {senderDomainLabel}
+                    </p>
+                    {summary.priceText ? (
+                      <p className="mt-1 text-xs text-slate-700">Price: {summary.priceText}</p>
+                    ) : null}
+                    {summary.quantityText ? (
+                      <p className="mt-1 text-xs text-slate-700">Quantity: {summary.quantityText}</p>
+                    ) : null}
+                    {summary.note ? <p className="mt-1 text-xs text-slate-700">Message: {summary.note}</p> : null}
+                  </>
+                );
+              })()}
               <p className="mt-1 text-xs text-slate-600">Status: {offer.status}</p>
-              <p className="mt-1 text-xs text-slate-600">Received: {new Date(offer.receivedAt).toLocaleString()}</p>
+              <p className="mt-1 text-xs text-slate-600">Received: {formatLocalDateTime(offer.receivedAt)}</p>
+              {offer.respondedAt ? (
+                <p className="mt-1 text-xs text-slate-600">Responded: {formatLocalDateTime(offer.respondedAt)}</p>
+              ) : null}
               {offer.agreementId ? (
                 <p className="mt-1 text-xs">
                   <Link className="underline" href={`/agreements/${offer.agreementId}`}>

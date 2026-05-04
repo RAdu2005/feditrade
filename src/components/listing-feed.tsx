@@ -1,37 +1,40 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useRouter } from "next/navigation";
+import { useState, type FormEvent } from "react";
+import { ListingCard, type ListingCardItem } from "@/components/listing-card";
 
-type ListingItem = {
-  id: string;
-  title: string;
-  description: string;
-  priceAmount: string | null;
-  priceCurrency: string | null;
-  location: string | null;
-  category: string | null;
-  proposalPurpose: string | null;
-  createdAt: string;
-  owner: {
-    actorUri: string;
-    username: string;
-    image: string | null;
-  };
-  images: {
-    url: string;
-  }[];
-};
+type ListingItem = ListingCardItem;
 
 type FeedPayload = {
   items: ListingItem[];
   nextCursor: string | null;
 };
 
-export function ListingFeed({ initial }: { initial: FeedPayload }) {
+type TrackedSource = {
+  id: string;
+  domain: string;
+  followStatus: "pending" | "accepted" | "error";
+  followError: string | null;
+  listings: ListingItem[];
+};
+
+export function ListingFeed({
+  initial,
+  trackedSources,
+  canTrackSources,
+}: {
+  initial: FeedPayload;
+  trackedSources: TrackedSource[];
+  canTrackSources: boolean;
+}) {
+  const router = useRouter();
   const [items, setItems] = useState(initial.items);
   const [nextCursor, setNextCursor] = useState<string | null>(initial.nextCursor);
   const [loading, setLoading] = useState(false);
+  const [trackingSource, setTrackingSource] = useState("");
+  const [tracking, setTracking] = useState(false);
+  const [trackingError, setTrackingError] = useState<string | null>(null);
 
   async function loadMore() {
     if (!nextCursor || loading) {
@@ -46,81 +49,109 @@ export function ListingFeed({ initial }: { initial: FeedPayload }) {
     setLoading(false);
   }
 
-  if (items.length === 0) {
-    return <p className="text-sm text-slate-600">No listings yet. Be the first one!</p>;
+  async function onTrackSource(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const source = trackingSource.trim();
+    if (!source || tracking) {
+      return;
+    }
+
+    setTracking(true);
+    setTrackingError(null);
+
+    const response = await fetch("/api/federation/tracked-sources", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({ source }),
+    });
+
+    const payload = (await response.json().catch(() => ({}))) as { error?: string };
+    if (!response.ok) {
+      setTrackingError(payload.error ?? "Failed to track source");
+      setTracking(false);
+      return;
+    }
+
+    setTracking(false);
+    setTrackingSource("");
+    router.refresh();
   }
 
   return (
-    <div className="space-y-4">
-      <ul className="space-y-4">
-        {items.map((listing) => {
-          const isSelling = listing.proposalPurpose !== "request";
-          return (
-            <li key={listing.id} className="rounded border border-slate-200 bg-white p-4">
-              <div className="flex flex-col gap-3 sm:flex-row">
-                {listing.images[0] ? (
-                  <div className="h-32 w-full overflow-hidden rounded border border-slate-200 bg-slate-50 sm:w-40">
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img
-                      src={listing.images[0].url}
-                      alt={listing.title}
-                      className="h-full w-full object-contain"
-                    />
-                  </div>
-                ) : (
-                  <div className="h-32 w-full rounded bg-slate-100 sm:w-40" />
-                )}
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Link className="text-lg font-semibold hover:underline" href={`/listings/${listing.id}`}>
-                      {listing.title}
-                    </Link>
-                    <span
-                      className={`inline-flex rounded-md px-2.5 py-1 text-xs font-extrabold tracking-wide text-white ${
-                        isSelling ? "bg-emerald-600" : "bg-red-800"
-                      }`}
-                    >
-                      {isSelling ? "SELLING" : "BUYING"}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-sm text-slate-700">{listing.description}</p>
-                  <p className="mt-2 text-sm">
-                    {listing.priceAmount && listing.priceCurrency
-                      ? `${listing.priceAmount} ${listing.priceCurrency}`
-                      : "Price not specified"}
-                  </p>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-slate-600">
-                    {listing.owner.image ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img
-                        src={listing.owner.image}
-                        alt={listing.owner.username}
-                        className="h-5 w-5 rounded-full border border-slate-200 object-cover"
-                      />
-                    ) : (
-                      <span className="h-5 w-5 rounded-full border border-slate-200 bg-slate-100" />
-                    )}
-                    <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
-                      @{listing.owner.username}
-                    </a>
-                  </div>
-                </div>
-              </div>
-            </li>
-          );
-        })}
-      </ul>
-
-      {nextCursor ? (
-        <button
-          type="button"
-          onClick={loadMore}
-          disabled={loading}
-          className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
-        >
-          {loading ? "Loading..." : "Load more"}
-        </button>
+    <div className="space-y-8">
+      {canTrackSources ? (
+        <details className="rounded border border-slate-200 bg-white p-4">
+          <summary className="cursor-pointer text-sm font-semibold">Track remote instance or listing</summary>
+          <p className="mt-2 text-xs text-slate-600">
+            Paste either a remote listing URL or the domain of another Feditrade instance.
+          </p>
+          <form className="mt-3 flex flex-col gap-2 sm:flex-row" onSubmit={onTrackSource}>
+            <input
+              type="text"
+              value={trackingSource}
+              onChange={(event) => setTrackingSource(event.target.value)}
+              className="w-full rounded border border-slate-300 px-3 py-2 text-sm"
+              placeholder="example.org or https://example.org/listings/abc"
+              required
+            />
+            <button
+              type="submit"
+              disabled={tracking}
+              className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+            >
+              {tracking ? "Tracking..." : "Track source"}
+            </button>
+          </form>
+          {trackingError ? <p className="mt-2 text-xs text-red-700">{trackingError}</p> : null}
+        </details>
       ) : null}
+
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Native listings</h2>
+        {items.length === 0 ? (
+          <p className="text-sm text-slate-600">No listings yet. Be the first one!</p>
+        ) : (
+          <ul className="space-y-4">
+            {items.map((listing) => (
+              <ListingCard key={listing.id} listing={listing} />
+            ))}
+          </ul>
+        )}
+
+        {nextCursor ? (
+          <button
+            type="button"
+            onClick={loadMore}
+            disabled={loading}
+            className="rounded bg-slate-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-50"
+          >
+            {loading ? "Loading..." : "Load more"}
+          </button>
+        ) : null}
+      </section>
+
+      <section className="space-y-4">
+        {trackedSources.map((source) => (
+          <details key={source.id} className="rounded border border-slate-200 bg-slate-50 p-4" open>
+            <summary className="cursor-pointer text-sm font-semibold">
+              {source.domain}
+              <span className="ml-2 text-xs font-normal text-slate-600">({source.followStatus})</span>
+            </summary>
+            {source.followError ? <p className="mt-2 text-xs text-red-700">{source.followError}</p> : null}
+            {source.listings.length === 0 ? (
+              <p className="mt-2 text-sm text-slate-600">No active listings mirrored yet.</p>
+            ) : (
+              <ul className="mt-3 space-y-4">
+                {source.listings.map((listing) => (
+                  <ListingCard key={listing.id} listing={listing} />
+                ))}
+              </ul>
+            )}
+          </details>
+        ))}
+      </section>
     </div>
   );
 }

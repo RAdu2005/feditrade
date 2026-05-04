@@ -1,39 +1,31 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
-import { DeleteListingButton } from "@/components/delete-listing-button";
-import { ListingOfferForm } from "@/components/listing-offer-form";
 import { ListingImageGallery } from "@/components/listing-image-gallery";
-import { ListingReceivedOffersPanel } from "@/components/listing-received-offers-panel";
-import { getListingById } from "@/lib/listing-service";
-import { listOutboundMarketplaceOffersForUserAndListing } from "@/lib/marketplace-outbound-offer-service";
-import { listMarketplaceOffersForUserAndListing } from "@/lib/marketplace-offer-service";
+import { ListingOfferForm } from "@/components/listing-offer-form";
+import { getFederatedListingById } from "@/lib/federation-tracking-service";
+import { listOutboundMarketplaceOffersForUserAndFederatedListing } from "@/lib/marketplace-outbound-offer-service";
 
 type Params = {
   params: Promise<{ id: string }>;
 };
 
-export default async function ListingDetailsPage({ params }: Params) {
+export default async function FederatedListingDetailsPage({ params }: Params) {
   const { id } = await params;
-  const [listing, session] = await Promise.all([getListingById(id), auth()]);
+  const [listing, session] = await Promise.all([getFederatedListingById(id), auth()]);
   if (!listing) {
     notFound();
   }
 
-  const canManage = session?.user?.mastodonActorUri === listing.owner.actorUri;
-  const canSendOffer =
-    !!session?.user?.id && !canManage && !!listing.proposalUrl && listing.status === "ACTIVE";
+  const canSendOffer = !!session?.user?.id && !!listing.proposalUrl && listing.status === "ACTIVE";
+  const sentOffers = canSendOffer
+    ? await listOutboundMarketplaceOffersForUserAndFederatedListing(session.user.id, listing.id)
+    : [];
   const listingPurposeLabel = listing.proposalPurpose === "offer" ? "SELLING" : "BUYING";
   const listingPurposeClass = listing.proposalPurpose === "offer" ? "bg-emerald-600" : "bg-red-800";
   const ownerLabel = listing.owner.username.startsWith("@")
     ? listing.owner.username
     : `@${listing.owner.username}`;
-  const sentOffers = canSendOffer
-    ? await listOutboundMarketplaceOffersForUserAndListing(session.user.id, listing.id)
-    : [];
-  const receivedOffers = canManage && session?.user?.id
-    ? await listMarketplaceOffersForUserAndListing(session.user.id, listing.id)
-    : [];
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -107,23 +99,20 @@ export default async function ListingDetailsPage({ params }: Params) {
               </a>
             </p>
           ) : null}
+          {listing.canonicalUrl ? (
+            <p className="mt-1">
+              Canonical listing:{" "}
+              <a className="underline" href={listing.canonicalUrl} target="_blank" rel="noreferrer">
+                {listing.canonicalUrl}
+              </a>
+            </p>
+          ) : null}
         </div>
-
-        {canManage ? (
-          <div className="mt-8 flex items-center gap-2">
-            <Link
-              className="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white"
-              href={`/listings/${listing.id}/edit`}
-            >
-              Edit
-            </Link>
-            <DeleteListingButton listingId={listing.id} />
-          </div>
-        ) : null}
 
         {canSendOffer ? (
           <ListingOfferForm
             listingId={listing.id}
+            offerEndpoint={`/api/federated-listings/${listing.id}/offers`}
             listingCurrency={listing.priceCurrency}
             listingUnitCode={listing.unitCode}
             sentOffers={sentOffers.map((offer) => ({
@@ -138,20 +127,11 @@ export default async function ListingDetailsPage({ params }: Params) {
           />
         ) : null}
 
-        {canManage ? (
-          <ListingReceivedOffersPanel
-            listingStatus={listing.status}
-            offers={receivedOffers.map((offer) => ({
-              id: offer.id,
-              remoteActorId: offer.remoteActorId,
-              agreementJson: offer.agreementJson,
-              status: offer.status,
-              receivedAt: offer.receivedAt.toISOString(),
-              respondedAt: offer.respondedAt?.toISOString() ?? null,
-              agreementId: offer.agreement?.id ?? null,
-            }))}
-          />
-        ) : null}
+        <div className="mt-8">
+          <Link className="text-sm underline" href="/offers/sent">
+            View all sent offers
+          </Link>
+        </div>
       </article>
     </main>
   );

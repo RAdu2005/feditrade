@@ -30,6 +30,12 @@ enum DeliveryJobStatus {
   DEAD_LETTER
 }
 
+enum FederationFollowStatus {
+  PENDING
+  ACCEPTED
+  ERROR
+}
+
 enum FederationProjectionType {
   LEGACY_NOTE
   MARKETPLACE_CANONICAL
@@ -78,6 +84,12 @@ enum MarketplaceOutboundOfferStatus {
   CANCELLED
 }
 
+enum FederatedListingStatus {
+  ACTIVE
+  INACTIVE
+  REMOVED
+}
+
 enum AdminActionType {
   TAKE_DOWN_LISTING
   RESTORE_LISTING
@@ -100,6 +112,7 @@ model User {
   listings Listing[]
   sessions Session[]
   outboundOffers MarketplaceOutboundOffer[]
+  createdTrackedInstances FederationTrackedInstance[]
 
   @@unique([mastodonDomain, mastodonAccountId])
 }
@@ -274,6 +287,7 @@ model MarketplaceOutboundOffer {
   id                 String                       @id @default(cuid())
   localUserId        String
   localListingId     String?
+  federatedListingId String?
   activityId         String                       @unique
   actorId            String
   targetProposalId   String
@@ -290,11 +304,71 @@ model MarketplaceOutboundOffer {
 
   localUser     User                            @relation(fields: [localUserId], references: [id], onDelete: Cascade)
   localListing  Listing?                        @relation(fields: [localListingId], references: [id], onDelete: SetNull)
+  federatedListing FederatedListing?            @relation(fields: [federatedListingId], references: [id], onDelete: SetNull)
   agreement     MarketplaceOutboundAgreement?
   confirmations MarketplaceOutboundConfirmation[]
 
   @@index([localUserId, sentAt(sort: Desc)])
   @@index([localListingId, sentAt(sort: Desc)])
+  @@index([federatedListingId, sentAt(sort: Desc)])
+}
+
+model FederationTrackedInstance {
+  id                 String               @id @default(cuid())
+  domain             String               @unique
+  actorId            String               @unique
+  inbox              String
+  sharedInbox        String?
+  followStatus       FederationFollowStatus @default(PENDING)
+  followError        String?
+  lastFollowAttemptAt DateTime?
+  lastFollowAcceptedAt DateTime?
+  createdByUserId    String
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+
+  createdByUser      User                 @relation(fields: [createdByUserId], references: [id], onDelete: Cascade)
+  federatedListings  FederatedListing[]
+
+  @@index([followStatus, updatedAt(sort: Desc)])
+}
+
+model FederatedListing {
+  id                     String                  @id @default(cuid())
+  trackedInstanceId      String
+  sourceDomain           String
+  remoteActorId          String
+  proposalId             String                  @unique
+  canonicalUrl           String
+  title                  String
+  description            String
+  priceAmount            Decimal?                @db.Decimal(10, 2)
+  priceCurrency          String?
+  location               String?
+  category               String?
+  proposalPurpose        MarketplaceProposalPurpose @default(OFFER)
+  availableQuantity      Decimal?                @db.Decimal(14, 4)
+  minimumQuantity        Decimal?                @db.Decimal(14, 4)
+  unitCode               String?
+  resourceConformsTo     String?
+  validFrom              DateTime?
+  validUntil             DateTime?
+  status                 FederatedListingStatus  @default(ACTIVE)
+  imageAttachmentsJson   Json
+  rawProposalJson        Json
+  publishedAt            DateTime?
+  updatedAtRemote        DateTime?
+  firstSeenAt            DateTime                @default(now())
+  lastSeenAt             DateTime                @default(now())
+  createdAt              DateTime                @default(now())
+  updatedAt              DateTime                @updatedAt
+
+  trackedInstance FederationTrackedInstance @relation(fields: [trackedInstanceId], references: [id], onDelete: Cascade)
+  outboundOffers  MarketplaceOutboundOffer[]
+
+  @@index([sourceDomain, createdAt(sort: Desc)])
+  @@index([status, createdAt(sort: Desc)])
+  @@index([remoteActorId, status, createdAt(sort: Desc)])
 }
 
 model MarketplaceOutboundAgreement {
