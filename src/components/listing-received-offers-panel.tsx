@@ -20,12 +20,11 @@ type ReceivedOffer = {
 };
 
 type Props = {
-  listingId: string;
   listingStatus: "ACTIVE" | "SOLD" | "REMOVED";
   offers: ReceivedOffer[];
 };
 
-export function ListingReceivedOffersPanel({ listingId, listingStatus, offers }: Props) {
+export function ListingReceivedOffersPanel({ listingStatus, offers }: Props) {
   const router = useRouter();
   const [busyOfferId, setBusyOfferId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -69,11 +68,7 @@ export function ListingReceivedOffersPanel({ listingId, listingStatus, offers }:
                 return (
                   <>
                     <p className="text-xs font-medium">
-                      User {senderDomainLabel} (
-                      <Link className="underline" href={`/listings/${listingId}`}>
-                        View listing
-                      </Link>
-                      )
+                      From: User {senderDomainLabel}
                     </p>
                     {summary.priceText ? (
                       <p className="mt-1 text-xs text-slate-700">Price: {summary.priceText}</p>

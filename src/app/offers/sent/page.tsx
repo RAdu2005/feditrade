@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { SentOffersList } from "@/components/sent-offers-list";
 import { requireUser } from "@/lib/auth-helpers";
 import { listOutboundMarketplaceOffersForUser } from "@/lib/marketplace-outbound-offer-service";
-import { listingUrlFromProposalId } from "@/lib/offer-display";
 
 export default async function SentOffersPage() {
   const user = await requireUser();
@@ -26,12 +25,6 @@ export default async function SentOffersPage() {
           id: offer.id,
           targetProposalId: offer.targetProposalId,
           targetActorId: offer.targetActorId,
-          listingHref:
-            offer.localListingId
-              ? `/listings/${offer.localListingId}`
-              : offer.federatedListingId
-                ? `/federated-listings/${offer.federatedListingId}`
-                : (listingUrlFromProposalId(offer.targetProposalId) ?? offer.targetProposalId),
           agreementJson: offer.agreementJson,
           responseJson: offer.responseJson,
           status: offer.status,

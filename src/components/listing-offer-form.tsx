@@ -22,7 +22,6 @@ type SentOffer = {
 
 type Props = {
   listingId: string;
-  listingViewHref?: string;
   offerEndpoint?: string;
   listingCurrency: string | null;
   listingUnitCode: string | null;
@@ -31,7 +30,6 @@ type Props = {
 
 export function ListingOfferForm({
   listingId,
-  listingViewHref,
   offerEndpoint,
   listingCurrency,
   listingUnitCode,
@@ -212,11 +210,7 @@ export function ListingOfferForm({
                   return (
                     <>
                       <p className="text-xs font-medium">
-                        User {targetDomainLabel} (
-                        <Link className="underline" href={listingViewHref ?? `/listings/${listingId}`}>
-                          View listing
-                        </Link>
-                        )
+                        To: User {targetDomainLabel}
                       </p>
                       {summary.priceText ? <p className="mt-1 text-slate-700">Price: {summary.priceText}</p> : null}
                       {summary.quantityText ? <p className="mt-1 text-slate-700">Quantity: {summary.quantityText}</p> : null}

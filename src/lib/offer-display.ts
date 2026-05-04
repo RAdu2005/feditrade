@@ -114,21 +114,6 @@ export function domainLabelFromUri(uri: string) {
   }
 }
 
-export function listingUrlFromProposalId(proposalId: string) {
-  try {
-    const parsed = new URL(proposalId);
-    const cleanedPath = parsed.pathname.replace(/\/+$/, "");
-    const listingMatch = cleanedPath.match(/\/ap\/proposals\/([^/]+)$/);
-    if (!listingMatch?.[1]) {
-      return null;
-    }
-
-    return `${parsed.origin}/listings/${listingMatch[1]}`;
-  } catch {
-    return null;
-  }
-}
-
 export function extractOfferSenderActorId(agreementJson: unknown, fallbackActorId: string) {
   const agreement = asRecord(agreementJson);
   if (!agreement) {

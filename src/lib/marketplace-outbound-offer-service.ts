@@ -37,6 +37,11 @@ type InboundActivityPayload = {
   [key: string]: unknown;
 };
 
+type ContactIdentity = {
+  mastodonUsername: string;
+  mastodonDomain: string;
+};
+
 function asRecord(value: unknown) {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return null;
@@ -128,6 +133,31 @@ function decimalToNumber(value: { toString(): string } | null | undefined) {
 
   const parsed = Number(value.toString());
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function normalizedMastodonUsername(value: string) {
+  return value.trim().replace(/^@+/, "");
+}
+
+function buildContactLine(identity: ContactIdentity) {
+  const username = normalizedMastodonUsername(identity.mastodonUsername);
+  const host = identity.mastodonDomain.trim().toLowerCase();
+  return `Contact: @${username}@${host}`;
+}
+
+function withContactFooter(note: string | null | undefined, identity: ContactIdentity) {
+  const contactLine = buildContactLine(identity);
+  const base = note?.trim() ?? "";
+
+  if (!base) {
+    return contactLine;
+  }
+
+  if (base.includes(contactLine)) {
+    return base;
+  }
+
+  return `${base}\n\n${contactLine}`;
 }
 
 async function fetchActorDocument(actorUrl: string) {
@@ -251,6 +281,20 @@ function agreementPayload(input: OutboundOfferInput) {
 }
 
 export async function sendOutboundMarketplaceOffer(userId: string, input: OutboundOfferInput) {
+  const localUser = await prisma.user.findUnique({
+    where: {
+      id: userId,
+    },
+    select: {
+      mastodonUsername: true,
+      mastodonDomain: true,
+    },
+  });
+
+  if (!localUser) {
+    throw new Error("Local user not found");
+  }
+
   const inferredActorId = await discoverTargetActorForProposal({
     targetProposalId: input.targetProposalId,
     fallbackActorId: input.targetActorId,
@@ -264,6 +308,7 @@ export async function sendOutboundMarketplaceOffer(userId: string, input: Outbou
     cc: [],
     object: agreementPayload({
       ...input,
+      note: withContactFooter(input.note, localUser),
       targetActorId: inferredActorId,
     }),
   });

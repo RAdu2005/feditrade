@@ -124,7 +124,6 @@ export default async function ListingDetailsPage({ params }: Params) {
         {canSendOffer ? (
           <ListingOfferForm
             listingId={listing.id}
-            listingViewHref={`/listings/${listing.id}`}
             listingCurrency={listing.priceCurrency}
             listingUnitCode={listing.unitCode}
             sentOffers={sentOffers.map((offer) => ({
@@ -141,7 +140,6 @@ export default async function ListingDetailsPage({ params }: Params) {
 
         {canManage ? (
           <ListingReceivedOffersPanel
-            listingId={listing.id}
             listingStatus={listing.status}
             offers={receivedOffers.map((offer) => ({
               id: offer.id,

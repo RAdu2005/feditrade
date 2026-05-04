@@ -37,11 +37,7 @@ function OfferCard({ offer }: { offer: ReceivedOfferItem }) {
         <span className="rounded bg-slate-100 px-2 py-1 text-xs font-medium">{offer.status}</span>
       </div>
       <p className="mt-2 text-xs text-slate-700">
-        User {senderDomainLabel} (
-        <Link className="underline" href={`/listings/${offer.listingId}`}>
-          View listing
-        </Link>
-        )
+        From: User {senderDomainLabel}
       </p>
       {summary.priceText ? <p className="mt-1 text-xs text-slate-700">Price: {summary.priceText}</p> : null}
       {summary.quantityText ? <p className="mt-1 text-xs text-slate-700">Quantity: {summary.quantityText}</p> : null}
