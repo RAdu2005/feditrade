@@ -13,6 +13,7 @@ export type ListingCardItem = {
     actorUri: string;
     username: string;
     image: string | null;
+    activityPubActorUri?: string | null;
   };
   images: {
     url: string;
@@ -21,6 +22,9 @@ export type ListingCardItem = {
 
 export function ListingCard({ listing }: { listing: ListingCardItem }) {
   const isSelling = listing.proposalPurpose !== "request";
+  const ownerLabel = listing.owner.username.startsWith("@")
+    ? listing.owner.username
+    : `@${listing.owner.username}`;
 
   return (
     <li className="rounded border border-slate-200 bg-white p-4">
@@ -70,9 +74,22 @@ export function ListingCard({ listing }: { listing: ListingCardItem }) {
             ) : (
               <span className="h-5 w-5 rounded-full border border-slate-200 bg-slate-100" />
             )}
-            <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
-              @{listing.owner.username}
-            </a>
+            <span>
+              <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
+                {ownerLabel}
+              </a>
+              {listing.owner.activityPubActorUri &&
+              listing.owner.activityPubActorUri !== listing.owner.actorUri ? (
+                <>
+                  {" "}
+                  (
+                  <a className="underline" href={listing.owner.activityPubActorUri} target="_blank" rel="noreferrer">
+                    Actor
+                  </a>
+                  )
+                </>
+              ) : null}
+            </span>
           </div>
         </div>
       </div>

@@ -80,6 +80,7 @@ function listingToApi(listing: ListingWithRelations) {
       username: listing.owner.mastodonUsername,
       domain: listing.owner.mastodonDomain,
       image: listing.owner.image,
+      activityPubActorUri: null,
     },
     images: listing.images.map((image) => ({
       id: image.id,

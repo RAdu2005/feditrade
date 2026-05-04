@@ -23,6 +23,9 @@ export default async function FederatedListingDetailsPage({ params }: Params) {
     : [];
   const listingPurposeLabel = listing.proposalPurpose === "offer" ? "SELLING" : "BUYING";
   const listingPurposeClass = listing.proposalPurpose === "offer" ? "bg-emerald-600" : "bg-red-800";
+  const ownerLabel = listing.owner.username.startsWith("@")
+    ? listing.owner.username
+    : `@${listing.owner.username}`;
 
   return (
     <main className="mx-auto max-w-4xl px-6 py-10">
@@ -56,9 +59,27 @@ export default async function FederatedListingDetailsPage({ params }: Params) {
             ) : (
               <span className="h-7 w-7 rounded-full border border-slate-200 bg-slate-100" />
             )}
-            <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
-              @{listing.owner.username}
-            </a>
+            <span>
+              <a className="underline" href={listing.owner.actorUri} target="_blank" rel="noreferrer">
+                {ownerLabel}
+              </a>
+              {listing.owner.activityPubActorUri &&
+              listing.owner.activityPubActorUri !== listing.owner.actorUri ? (
+                <>
+                  {" "}
+                  (
+                  <a
+                    className="underline"
+                    href={listing.owner.activityPubActorUri}
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Actor
+                  </a>
+                  )
+                </>
+              ) : null}
+            </span>
           </div>
           {listing.location ? <p className="mt-1">Location: {listing.location}</p> : null}
           {listing.category ? <p className="mt-1">Category: {listing.category}</p> : null}

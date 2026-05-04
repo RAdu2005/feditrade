@@ -508,6 +508,57 @@ function deriveUsernameFromActor(actorId: string) {
   return actorId;
 }
 
+function deriveHandleFromActor(actorId: string) {
+  try {
+    const parsed = new URL(actorId);
+    const domain = parsed.hostname.toLowerCase();
+    const pathname = parsed.pathname.replace(/\/+$/, "");
+    const segments = pathname.split("/").filter(Boolean);
+
+    if (segments.length === 1 && segments[0]?.startsWith("@")) {
+      return `${segments[0]}@${domain}`;
+    }
+
+    if (segments.length >= 2 && segments[0]?.toLowerCase() === "users" && segments[1]) {
+      return `@${segments[1]}@${domain}`;
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function parseSellerIdentity(rawProposal: unknown, fallbackActorId: string) {
+  const proposal = asRecord(rawProposal);
+  if (!proposal) {
+    return {
+      profileActorUri: fallbackActorId,
+      displayHandle: deriveHandleFromActor(fallbackActorId) ?? deriveUsernameFromActor(fallbackActorId),
+    };
+  }
+
+  const sellerValue = proposal.seller ?? proposal.provider;
+  let profileActorUri =
+    normalizeObjectId(sellerValue) ??
+    normalizeObjectId(asRecord(sellerValue)?.id) ??
+    fallbackActorId;
+
+  if (!profileActorUri) {
+    profileActorUri = fallbackActorId;
+  }
+
+  const sellerRecord = asRecord(sellerValue);
+  const preferredUsername =
+    typeof sellerRecord?.preferredUsername === "string" ? sellerRecord.preferredUsername.trim() : null;
+  const displayHandle = preferredUsername || deriveHandleFromActor(profileActorUri) || deriveUsernameFromActor(profileActorUri);
+
+  return {
+    profileActorUri,
+    displayHandle,
+  };
+}
+
 async function upsertFederatedListingFromProposal(params: {
   trackedInstanceId: string;
   sourceDomain: string;
@@ -815,7 +866,10 @@ function federatedListingToApi(listing: {
   createdAt: Date;
   updatedAt: Date;
   imageAttachmentsJson: unknown;
+  rawProposalJson: unknown;
 }) {
+  const sellerIdentity = parseSellerIdentity(listing.rawProposalJson, listing.remoteActorId);
+
   return {
     id: listing.id,
     title: listing.title,
@@ -843,9 +897,10 @@ function federatedListingToApi(listing: {
     detailHref: `/federated-listings/${listing.id}`,
     canSendOffer: listing.status === "ACTIVE",
     owner: {
-      actorUri: listing.remoteActorId,
-      username: deriveUsernameFromActor(listing.remoteActorId),
+      actorUri: sellerIdentity.profileActorUri,
+      username: sellerIdentity.displayHandle,
       image: null,
+      activityPubActorUri: listing.remoteActorId,
     },
     images: imageListFromJson(listing.imageAttachmentsJson),
   };
