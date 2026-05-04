@@ -1,8 +1,15 @@
 import { ListingFeed } from "@/components/listing-feed";
+import { auth } from "@/auth";
+import { listTrackedSourcesWithActiveListings } from "@/lib/federation-tracking-service";
 import { listPublicListings } from "@/lib/listing-service";
 
 export default async function Home() {
-  const initialFeed = await listPublicListings({ cursor: null, limit: 20 });
+  const [initialFeed, session, trackedSources] = await Promise.all([
+    listPublicListings({ cursor: null, limit: 20 }),
+    auth(),
+    listTrackedSourcesWithActiveListings(),
+  ]);
+
   return (
     <main className="mx-auto max-w-6xl px-6 py-10">
       <h1 className="text-3xl font-semibold">Marketplace Listings</h1>
@@ -10,7 +17,11 @@ export default async function Home() {
         Public listings federated through ActivityPub from this instance.
       </p>
       <div className="mt-8">
-        <ListingFeed initial={initialFeed} />
+        <ListingFeed
+          initial={initialFeed}
+          trackedSources={trackedSources}
+          canTrackSources={Boolean(session?.user?.id)}
+        />
       </div>
     </main>
   );

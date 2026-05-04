@@ -71,6 +71,10 @@ function listingToApi(listing: ListingWithRelations) {
     updatedAt: listing.updatedAt.toISOString(),
     canonicalUrl: listing.canonicalUrl,
     proposalUrl: listing.proposal?.activityPubId ?? null,
+    originType: "local" as const,
+    originDomain: env.AP_INSTANCE_DOMAIN,
+    detailHref: `/listings/${listing.id}`,
+    canSendOffer: listing.status === "ACTIVE" && Boolean(listing.proposal?.activityPubId),
     owner: {
       actorUri: listing.owner.mastodonActorUri,
       username: listing.owner.mastodonUsername,

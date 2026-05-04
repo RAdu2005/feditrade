@@ -7,6 +7,10 @@ import {
   signFederatedRequest,
 } from "@/lib/activitypub";
 import { env } from "@/lib/env";
+import {
+  markTrackedInstanceFollowAccepted,
+  processTrackedInstanceProposalActivity,
+} from "@/lib/federation-tracking-service";
 import { childLogger } from "@/lib/logger";
 import { recordInboundMarketplaceOffer } from "@/lib/marketplace-offer-service";
 import {
@@ -505,6 +509,10 @@ async function processInboundOffer(activity: ActivityPayload) {
 }
 
 async function processInboundAccept(activity: ActivityPayload) {
+  if (activity.actor) {
+    await markTrackedInstanceFollowAccepted(activity.actor);
+  }
+
   const matchedOutbound = await applyInboundAcceptToOutboundOffer(activity);
   if (matchedOutbound) {
     return;
@@ -612,6 +620,11 @@ async function processInboundConfirmation(activity: ActivityPayload) {
 
 export async function processInboundActivity(activity: ActivityPayload) {
   if (!activity.actor || !activity.type) {
+    return;
+  }
+
+  const processedTrackedProposal = await processTrackedInstanceProposalActivity(activity);
+  if (processedTrackedProposal) {
     return;
   }
 

@@ -13,12 +13,19 @@ type SentOffer = {
 
 type Props = {
   listingId: string;
+  offerEndpoint?: string;
   listingCurrency: string | null;
   listingUnitCode: string | null;
   sentOffers: SentOffer[];
 };
 
-export function ListingOfferForm({ listingId, listingCurrency, listingUnitCode, sentOffers }: Props) {
+export function ListingOfferForm({
+  listingId,
+  offerEndpoint,
+  listingCurrency,
+  listingUnitCode,
+  sentOffers,
+}: Props) {
   const router = useRouter();
   const [note, setNote] = useState("");
   const [quantity, setQuantity] = useState("");
@@ -56,7 +63,7 @@ export function ListingOfferForm({ listingId, listingCurrency, listingUnitCode, 
       return;
     }
 
-    const response = await fetch(`/api/listings/${listingId}/offers`, {
+    const response = await fetch(offerEndpoint ?? `/api/listings/${listingId}/offers`, {
       method: "POST",
       headers: {
         "content-type": "application/json",

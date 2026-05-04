@@ -2,6 +2,7 @@ import {
   listingCreateSchema,
   listingMarketplaceOfferSchema,
   outboundMarketplaceOfferSchema,
+  trackedSourceSchema,
 } from "@/lib/validators";
 
 describe("validators", () => {
@@ -128,6 +129,22 @@ describe("validators", () => {
       unitCode: "EA",
       resourceConformsTo: "https://schema.org/Product",
       validUntil: new Date(Date.now() - 60_000).toISOString(),
+    });
+
+    expect(parsed.success).toBe(false);
+  });
+
+  it("accepts a valid tracked source payload", () => {
+    const parsed = trackedSourceSchema.safeParse({
+      source: "https://remote.example/listings/abc",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects an empty tracked source payload", () => {
+    const parsed = trackedSourceSchema.safeParse({
+      source: " ",
     });
 
     expect(parsed.success).toBe(false);
