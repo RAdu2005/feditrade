@@ -64,8 +64,35 @@ function normalizeDomainLikeEntry(value: string) {
   }
 }
 
+function normalizePemValue(value: string) {
+  const normalizedLineEndings = value.trim().replace(/\r\n/g, "\n").replace(/\\n/g, "\n");
+  const beginMatch = normalizedLineEndings.match(/-----BEGIN [^-]+-----/);
+  const endMatch = normalizedLineEndings.match(/-----END [^-]+-----/);
+
+  if (!beginMatch || !endMatch) {
+    return normalizedLineEndings;
+  }
+
+  const begin = beginMatch[0];
+  const end = endMatch[0];
+  const beginIndex = normalizedLineEndings.indexOf(begin);
+  const endIndex = normalizedLineEndings.indexOf(end, beginIndex + begin.length);
+
+  if (beginIndex < 0 || endIndex < 0) {
+    return normalizedLineEndings;
+  }
+
+  const body = normalizedLineEndings
+    .slice(beginIndex + begin.length, endIndex)
+    .replace(/\s+/g, "");
+
+  return `${begin}\n${body}\n${end}`;
+}
+
 export const env = {
   ...parsed.data,
+  AP_PRIVATE_KEY_PEM: normalizePemValue(parsed.data.AP_PRIVATE_KEY_PEM),
+  AP_PUBLIC_KEY_PEM: normalizePemValue(parsed.data.AP_PUBLIC_KEY_PEM),
   AP_FEDERATION_TARGETS: splitCsv(parsed.data.AP_FEDERATION_TARGETS),
   AP_FEP_CAPABLE_INSTANCES: splitCsv(parsed.data.AP_FEP_CAPABLE_INSTANCES)
     .map(normalizeDomainLikeEntry)

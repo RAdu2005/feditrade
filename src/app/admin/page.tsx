@@ -64,6 +64,14 @@ export default async function AdminPage() {
 
       <section className="mt-10">
         <h2 className="text-lg font-semibold">Failed Federation Jobs</h2>
+        <form className="mt-3" action="/api/admin/federation/resync" method="post">
+          <button
+            className="rounded bg-slate-900 px-3 py-1.5 text-xs font-medium text-white"
+            type="submit"
+          >
+            Resync all listings to federation
+          </button>
+        </form>
         {failedJobs.length === 0 ? (
           <p className="mt-3 text-sm text-slate-600">No failed jobs.</p>
         ) : (

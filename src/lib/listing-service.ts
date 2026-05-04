@@ -477,3 +477,30 @@ export async function deleteListing(listingId: string, ownerId: string) {
 
   return listingToApi(listingWithProposal);
 }
+
+export async function resyncFederationForAllListings() {
+  const listings = await prisma.listing.findMany({
+    include: listingInclude,
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+  });
+
+  let publishedActive = 0;
+  let publishedDeletes = 0;
+
+  for (const listing of listings) {
+    if (listing.status === "ACTIVE") {
+      await publishListingActivities(listing, "Update");
+      publishedActive += 1;
+      continue;
+    }
+
+    await publishListingActivities(listing, "Delete");
+    publishedDeletes += 1;
+  }
+
+  return {
+    totalListings: listings.length,
+    publishedActive,
+    publishedDeletes,
+  };
+}
